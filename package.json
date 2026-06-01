@@ -1,0 +1,29 @@
+{
+  "name": "fraud-detection-example",
+  "version": "1.0.0",
+  "description": "Fraud Detection System using MongoDB Atlas Stream Processing",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "generate-data": "node scripts/generate-sample-data.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mongodb",
+    "atlas",
+    "stream-processing",
+    "fraud-detection",
+    "real-time"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "mongodb": "^6.3.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

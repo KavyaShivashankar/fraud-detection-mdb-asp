@@ -1,0 +1,144 @@
+[
+  {
+    "$source": {
+      "connectionName": "fraud_detection_cluster",
+      "db": "fraud_detection",
+      "coll": "transactions"
+    }
+  },
+  {
+    "$match": {
+      "status": "pending"
+    }
+  },
+  {
+    "$lookup": {
+      "from": {
+        "connectionName": "fraud_detection_cluster",
+        "db": "fraud_detection",
+        "coll": "user_profiles"
+      },
+      "localField": "user_id",
+      "foreignField": "user_id",
+      "as": "user_profile"
+    }
+  },
+  {
+    "$unwind": {
+      "path": "$user_profile",
+      "preserveNullAndEmptyArrays": true
+    }
+  },
+  {
+    "$addFields": {
+      "fraud_indicators": [],
+      "fraud_score": 0
+    }
+  },
+  {
+    "$addFields": {
+      "fraud_indicators": {
+        "$concatArrays": [
+          "$fraud_indicators",
+          {
+            "$cond": [
+              {
+                "$and": [
+                  { "$ifNull": ["$user_profile.patterns.avg_transaction_amount", false] },
+                  { "$gt": ["$amount", { "$multiply": ["$user_profile.patterns.avg_transaction_amount", 3] }] }
+                ]
+              },
+              ["high_amount"],
+              []
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "fraud_indicators": {
+        "$concatArrays": [
+          "$fraud_indicators",
+          {
+            "$cond": [
+              {
+                "$and": [
+                  { "$ifNull": ["$user_profile.patterns.frequent_locations", false] },
+                  {
+                    "$not": {
+                      "$in": [
+                        "$location.country",
+                        { "$map": { "input": "$user_profile.patterns.frequent_locations", "as": "loc", "in": "$$loc.country" } }
+                      ]
+                    }
+                  }
+                ]
+              },
+              ["unusual_location"],
+              []
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "fraud_indicators": {
+        "$concatArrays": [
+          "$fraud_indicators",
+          {
+            "$cond": [
+              {
+                "$and": [
+                  { "$ifNull": ["$user_profile.patterns.known_devices", false] },
+                  { "$not": { "$in": ["$device.device_id", "$user_profile.patterns.known_devices"] } }
+                ]
+              },
+              ["new_device"],
+              []
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "fraud_score": {
+        "$add": [
+          { "$cond": [{ "$in": ["high_amount", "$fraud_indicators"] }, 25, 0] },
+          { "$cond": [{ "$in": ["unusual_location", "$fraud_indicators"] }, 30, 0] },
+          { "$cond": [{ "$in": ["new_device", "$fraud_indicators"] }, 20, 0] }
+        ]
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "is_fraudulent": { "$gte": ["$fraud_score", 70] },
+      "status": {
+        "$cond": [
+          { "$gte": ["$fraud_score", 70] },
+          "flagged",
+          "completed"
+        ]
+      },
+      "processed_at": "$$NOW"
+    }
+  },
+  {
+    "$merge": {
+      "into": {
+        "connectionName": "fraud_detection_cluster",
+        "db": "fraud_detection",
+        "coll": "processed_transactions"
+      },
+      "whenMatched": "replace",
+      "whenNotMatched": "insert"
+    }
+  }
+]
+
