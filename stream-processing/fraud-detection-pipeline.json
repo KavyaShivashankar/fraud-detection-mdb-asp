@@ -217,39 +217,50 @@
   {
     "$addFields": {
       "is_fraudulent": {
-        "$gte": [
-          "$fraud_score",
-          70
-        ]
+        "$gte": ["$fraud_score", 70]
       },
       "status": {
         "$cond": [
-          {
-            "$gte": [
-              "$fraud_score",
-              70
-            ]
-          },
+          { "$gte": ["$fraud_score", 70] },
           "flagged",
           "completed"
+        ]
+      },
+      "fraud_alert": {
+        "$cond": [
+          { "$gte": ["$fraud_score", 70] },
+          {
+            "is_fraudulent": true,
+            "processed_transaction_id": "$_id"
+          },
+          null
         ]
       }
     }
   },
   {
-    "$match": {
-      "is_fraudulent": true
-    }
-  },
-  {
     "$merge": {
       "into": {
-        "coll": "processed_transactions",
         "connectionName": "democluster",
-        "db": "fraud_detection"
+        "db": "fraud_detection",
+        "coll": "transactions"
       },
-      "whenMatched": "replace",
-      "whenNotMatched": "insert"
+      "on": "transaction_id",
+      "whenMatched": [
+        {
+          "$set": {
+            "status": "$$new.status",
+            "is_fraudulent": "$$new.is_fraudulent",
+            "fraud_score": "$$new.fraud_score",
+            "fraud_indicators": "$$new.fraud_indicators",
+            "processed_at": "$$new.processed_at",
+            "fraud_alert": {
+              "$cond": ["$$new.is_fraudulent", "$$new.fraud_alert", "$$REMOVE"]
+            }
+          }
+        }
+      ],
+      "whenNotMatched": "discard"
     }
   }
 ]

@@ -9,7 +9,7 @@ const config = {
   // Replace with your actual Atlas connection string
   atlas: {
   // connectionString: process.env.MONGODB_URI || 'mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority',
-    connectionString: process.env.MONGODB_URI || 'mongodb+srv://ks_db_user:xxxx@demoxxx.rawu8i.mongodb.net/?appName=DemoCluster',
+    connectionString: process.env.MONGODB_URI || 'mongodb+srv://ks_db_user:xxx@democluster.rawu8i.mongodb.net/?appName=DemoCluster',
     
     // Database name
     database: 'fraud_detection',

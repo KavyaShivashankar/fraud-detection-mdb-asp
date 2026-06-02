@@ -1,0 +1,53 @@
+[
+  {
+    "$source": {
+      "connectionName": "democluster",
+      "db": "fraud_detection",
+      "coll": "transactions"
+    }
+  },
+  {
+    "$match": {
+      "operationType": {
+        "$in": ["update", "replace"]
+      }
+    }
+  },
+  {
+    "$lookup": {
+      "from": {
+        "connectionName": "democluster",
+        "db": "fraud_detection",
+        "coll": "transactions"
+      },
+      "localField": "documentKey._id",
+      "foreignField": "_id",
+      "as": "doc"
+    }
+  },
+  {
+    "$unwind": "$doc"
+  },
+  {
+    "$replaceRoot": {
+      "newRoot": "$doc"
+    }
+  },
+  {
+    "$match": {
+      "status": "flagged"
+    }
+  },
+  {
+    "$merge": {
+      "into": {
+        "connectionName": "democluster",
+        "db": "fraud_detection",
+        "coll": "fraud_transactions"
+      },
+      "on": "transaction_id",
+      "whenMatched": "replace",
+      "whenNotMatched": "insert"
+    }
+  }
+]
