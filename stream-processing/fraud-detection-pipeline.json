@@ -1,9 +1,30 @@
 [
   {
     "$source": {
-      "connectionName": "fraud_detection_cluster",
-      "db": "fraud_detection",
-      "coll": "transactions"
+      "coll": "transactions",
+      "connectionName": "democluster",
+      "db": "fraud_detection"
+    }
+  },
+  {
+    "$match": {
+      "operationType": {
+        "$in": [
+          "insert",
+          "update",
+          "replace"
+        ]
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "fullDocument.processed_at": "$wallTime"
+    }
+  },
+  {
+    "$replaceRoot": {
+      "newRoot": "$fullDocument"
     }
   },
   {
@@ -13,14 +34,14 @@
   },
   {
     "$lookup": {
-      "from": {
-        "connectionName": "fraud_detection_cluster",
-        "db": "fraud_detection",
-        "coll": "user_profiles"
-      },
-      "localField": "user_id",
+      "as": "user_profile",
       "foreignField": "user_id",
-      "as": "user_profile"
+      "from": {
+        "coll": "user_profiles",
+        "connectionName": "democluster",
+        "db": "fraud_detection"
+      },
+      "localField": "user_id"
     }
   },
   {
@@ -44,11 +65,28 @@
             "$cond": [
               {
                 "$and": [
-                  { "$ifNull": ["$user_profile.patterns.avg_transaction_amount", false] },
-                  { "$gt": ["$amount", { "$multiply": ["$user_profile.patterns.avg_transaction_amount", 3] }] }
+                  {
+                    "$ifNull": [
+                      "$user_profile.patterns.avg_transaction_amount",
+                      false
+                    ]
+                  },
+                  {
+                    "$gt": [
+                      "$amount",
+                      {
+                        "$multiply": [
+                          "$user_profile.patterns.avg_transaction_amount",
+                          3
+                        ]
+                      }
+                    ]
+                  }
                 ]
               },
-              ["high_amount"],
+              [
+                "high_amount"
+              ],
               []
             ]
           }
@@ -65,18 +103,31 @@
             "$cond": [
               {
                 "$and": [
-                  { "$ifNull": ["$user_profile.patterns.frequent_locations", false] },
+                  {
+                    "$ifNull": [
+                      "$user_profile.patterns.frequent_locations",
+                      false
+                    ]
+                  },
                   {
                     "$not": {
                       "$in": [
                         "$location.country",
-                        { "$map": { "input": "$user_profile.patterns.frequent_locations", "as": "loc", "in": "$$loc.country" } }
+                        {
+                          "$map": {
+                            "as": "loc",
+                            "in": "$$loc.country",
+                            "input": "$user_profile.patterns.frequent_locations"
+                          }
+                        }
                       ]
                     }
                   }
                 ]
               },
-              ["unusual_location"],
+              [
+                "unusual_location"
+              ],
               []
             ]
           }
@@ -93,11 +144,25 @@
             "$cond": [
               {
                 "$and": [
-                  { "$ifNull": ["$user_profile.patterns.known_devices", false] },
-                  { "$not": { "$in": ["$device.device_id", "$user_profile.patterns.known_devices"] } }
+                  {
+                    "$ifNull": [
+                      "$user_profile.patterns.known_devices",
+                      false
+                    ]
+                  },
+                  {
+                    "$not": {
+                      "$in": [
+                        "$device.device_id",
+                        "$user_profile.patterns.known_devices"
+                      ]
+                    }
+                  }
                 ]
               },
-              ["new_device"],
+              [
+                "new_device"
+              ],
               []
             ]
           }
@@ -109,36 +174,77 @@
     "$addFields": {
       "fraud_score": {
         "$add": [
-          { "$cond": [{ "$in": ["high_amount", "$fraud_indicators"] }, 25, 0] },
-          { "$cond": [{ "$in": ["unusual_location", "$fraud_indicators"] }, 30, 0] },
-          { "$cond": [{ "$in": ["new_device", "$fraud_indicators"] }, 20, 0] }
+          {
+            "$cond": [
+              {
+                "$in": [
+                  "high_amount",
+                  "$fraud_indicators"
+                ]
+              },
+              25,
+              0
+            ]
+          },
+          {
+            "$cond": [
+              {
+                "$in": [
+                  "unusual_location",
+                  "$fraud_indicators"
+                ]
+              },
+              30,
+              0
+            ]
+          },
+          {
+            "$cond": [
+              {
+                "$in": [
+                  "new_device",
+                  "$fraud_indicators"
+                ]
+              },
+              20,
+              0
+            ]
+          }
         ]
       }
     }
   },
   {
     "$addFields": {
-      "is_fraudulent": { "$gte": ["$fraud_score", 70] },
+      "is_fraudulent": {
+        "$gte": [
+          "$fraud_score",
+          10
+        ]
+      },
       "status": {
         "$cond": [
-          { "$gte": ["$fraud_score", 70] },
+          {
+            "$gte": [
+              "$fraud_score",
+              10
+            ]
+          },
           "flagged",
           "completed"
         ]
-      },
-      "processed_at": "$$NOW"
+      }
     }
   },
   {
     "$merge": {
       "into": {
-        "connectionName": "fraud_detection_cluster",
-        "db": "fraud_detection",
-        "coll": "processed_transactions"
+        "coll": "processed_transactions",
+        "connectionName": "democluster",
+        "db": "fraud_detection"
       },
       "whenMatched": "replace",
       "whenNotMatched": "insert"
     }
   }
 ]
-

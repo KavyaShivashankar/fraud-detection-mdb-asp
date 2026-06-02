@@ -104,6 +104,8 @@ This creates:
 1. Log in to MongoDB Atlas
 2. Navigate to your cluster
 3. Click on "Stream Processing" in the left sidebar
+  a. Create a workspace if you haven't already
+  b. Create a connection to your cluster
 4. Click "Create Stream Processor"
 5. Name it `fraud-detection-processor`
 6. Copy the pipeline from `stream-processing/fraud-detection-pipeline.json`
@@ -207,7 +209,7 @@ db.transactions.insertOne({
   timestamp: new Date(),
   user_id: "user_00001",
   account_id: "acc_12345",
-  amount: 5000,  // High amount
+  amount: 15000,  // High amount
   currency: "USD",
   transaction_type: "purchase",
   merchant: {
@@ -236,6 +238,25 @@ db.transactions.insertOne({
   status: "pending"
 })
 ```
+## To debug stream processing pipeline
+```javascript
+    sp.process([{
+    "$source": {
+      "coll": "transactions",
+      "connectionName": "democluster",
+      "db": "fraud_detection"
+    }
+  }])
+```
+
+```javascript
+sp["fp_fulldoc_dql_v2"].stats({verbose:true})
+sp["fp_fulldoc_dql_v2"].stop()
+sp["fp_fulldoc_dql_v2"].start()
+sp["fp_fulldoc_dql_v2"].drop()
+```
+
+
 
 ## 📚 Learn More
 
