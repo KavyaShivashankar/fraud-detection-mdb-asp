@@ -19,3 +19,6 @@ sp.createStreamProcessor("fraud_detector", fraudPipeline, processorOptions);
 
 // 4. Start the stream processor.  You can also alternately start it from the Atlas UI, but this is how you would do it programmatically.
 sp.fraud_detector.start();
+
+// 5. To drop stream processor and clean up resources when done
+sp.fraud_detector.drop();

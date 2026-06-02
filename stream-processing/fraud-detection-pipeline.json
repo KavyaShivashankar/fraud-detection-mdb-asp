@@ -219,7 +219,7 @@
       "is_fraudulent": {
         "$gte": [
           "$fraud_score",
-          10
+          70
         ]
       },
       "status": {
@@ -227,13 +227,18 @@
           {
             "$gte": [
               "$fraud_score",
-              10
+              70
             ]
           },
           "flagged",
           "completed"
         ]
       }
+    }
+  },
+  {
+    "$match": {
+      "is_fraudulent": true
     }
   },
   {
