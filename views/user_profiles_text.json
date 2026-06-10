@@ -1,0 +1,149 @@
+{
+  text: {
+    $concat: [
+      "average transaction: ",
+      {
+        $toString: {
+          $ifNull: [
+            "$patterns.avg_transaction_amount",
+            0
+          ]
+        }
+      },
+      " USD. daily transactions: ",
+      {
+        $toString: {
+          $ifNull: [
+            "$patterns.avg_daily_transactions",
+            0
+          ]
+        }
+      },
+      ". frequent locations: ",
+      {
+        $reduce: {
+          input: {
+            $map: {
+              input: {
+                $ifNull: [
+                  "$patterns.frequent_locations",
+                  []
+                ]
+              },
+              as: "l",
+              in: {
+                $concat: [
+                  "$$l.city",
+                  " ",
+                  "$$l.country"
+                ]
+              }
+            }
+          },
+          initialValue: "",
+          in: {
+            $cond: [
+              {
+                $eq: ["$$value", ""]
+              },
+              "$$this",
+              {
+                $concat: [
+                  "$$value",
+                  " ",
+                  "$$this"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      ". known devices: ",
+      {
+        $toString: {
+          $size: {
+            $ifNull: [
+              "$patterns.known_devices",
+              []
+            ]
+          }
+        }
+      },
+      ". top merchants: ",
+      {
+        $reduce: {
+          input: {
+            $slice: [
+              {
+                $ifNull: [
+                  "$patterns.frequent_merchants",
+                  []
+                ]
+              },
+              3
+            ]
+          },
+          initialValue: "",
+          in: {
+            $cond: [
+              {
+                $eq: ["$$value", ""]
+              },
+              "$$this.merchant_name",
+              {
+                $concat: [
+                  "$$value",
+                  " ",
+                  "$$this.merchant_name"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      ". transaction distribution: purchase ",
+      {
+        $toString: {
+          $multiply: [
+            {
+              $ifNull: [
+                "$patterns.transaction_type_distribution.purchase",
+                0
+              ]
+            },
+            100
+          ]
+        }
+      },
+      "% withdrawal ",
+      {
+        $toString: {
+          $multiply: [
+            {
+              $ifNull: [
+                "$patterns.transaction_type_distribution.withdrawal",
+                0
+              ]
+            },
+            100
+          ]
+        }
+      },
+      "% transfer ",
+      {
+        $toString: {
+          $multiply: [
+            {
+              $ifNull: [
+                "$patterns.transaction_type_distribution.transfer",
+                0
+              ]
+            },
+            100
+          ]
+        }
+      },
+      "%"
+    ]
+  }
+}

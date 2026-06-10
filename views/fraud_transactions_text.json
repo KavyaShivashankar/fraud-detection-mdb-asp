@@ -1,0 +1,93 @@
+{
+  text: {
+    $concat: [
+      "fraud indicators: ",
+      {
+        $cond: {
+          if: {
+            $gt: [
+              {
+                $size: {
+                  $ifNull: [
+                    "$fraud_indicators",
+                    []
+                  ]
+                }
+              },
+              0
+            ]
+          },
+          then: {
+            $reduce: {
+              input: "$fraud_indicators",
+              initialValue: "",
+              in: {
+                $cond: [
+                  {
+                    $eq: ["$$value", ""]
+                  },
+                  "$$this",
+                  {
+                    $concat: [
+                      "$$value",
+                      " ",
+                      "$$this"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          else: "none"
+        }
+      },
+      ". location: ",
+      {
+        $ifNull: ["$location.city", ""]
+      },
+      " ",
+      {
+        $ifNull: ["$location.country", ""]
+      },
+      ". merchant: ",
+      {
+        $ifNull: ["$merchant.merchant_name", ""]
+      },
+      " category ",
+      {
+        $ifNull: [
+          "$merchant.merchant_category",
+          ""
+        ]
+      },
+      ". amount: ",
+      {
+        $toString: {
+          $ifNull: ["$amount", 0]
+        }
+      },
+      " ",
+      {
+        $ifNull: ["$currency", ""]
+      },
+      ". device: ",
+      {
+        $ifNull: ["$device.device_type", ""]
+      },
+      " ",
+      {
+        $ifNull: ["$device.os", ""]
+      },
+      ". transaction type: ",
+      {
+        $ifNull: ["$transaction_type", ""]
+      },
+      ". fraud score: ",
+      {
+        $toString: {
+          $ifNull: ["$fraud_score", 0]
+        }
+      }
+    ]
+  }
+}
