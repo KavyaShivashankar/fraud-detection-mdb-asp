@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fraud Analyst · MongoDB</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/languages/json.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark:  #00684A;
+      --green-mid:   #00A35C;
+      --green-light: #00ED64;
+      --green-bg:    #E8F5EE;
+      --grey-50:     #F9FAFB;
+      --grey-100:    #F3F4F6;
+      --grey-200:    #E5E7EB;
+      --grey-400:    #9CA3AF;
+      --grey-700:    #374151;
+      --grey-900:    #111827;
+      --white:       #FFFFFF;
+      --radius:      12px;
+      --shadow:      0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-md:   0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--grey-100);
+      color: var(--grey-900);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--green-dark);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-md);
+    }
+    .logo {
+      width: 28px;
+      height: 28px;
+      background: var(--green-light);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    header h1 {
+      color: var(--white);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -.2px;
+    }
+    header .subtitle {
+      color: rgba(255,255,255,.55);
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    /* ── Chat area ── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .message-row {
+      display: flex;
+      padding: 6px 24px;
+      gap: 10px;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .message-row.user   { justify-content: flex-end; }
+    .message-row.system { justify-content: flex-start; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .avatar.bot  { background: var(--green-dark); color: var(--white); font-size: 16px; }
+    .avatar.user { background: var(--grey-200);  color: var(--grey-700); }
+
+    .bubble {
+      max-width: 72%;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      box-shadow: var(--shadow);
+    }
+    .bubble.user {
+      background: var(--green-dark);
+      color: var(--white);
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.bot {
+      background: var(--white);
+      color: var(--grey-900);
+      border-bottom-left-radius: 4px;
+    }
+
+    /* ── Tool status pills ── */
+    .tool-calls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .tool-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--green-bg);
+      border: 1px solid #B3DFC8;
+      color: var(--green-dark);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 20px;
+    }
+    .tool-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green-mid);
+    }
+
+    /* ── Markdown content ── */
+    .bubble.bot h1, .bubble.bot h2, .bubble.bot h3 {
+      color: var(--green-dark);
+      margin: 14px 0 6px;
+      font-weight: 600;
+    }
+    .bubble.bot h1 { font-size: 16px; }
+    .bubble.bot h2 { font-size: 15px; }
+    .bubble.bot h3 { font-size: 14px; }
+    .bubble.bot p  { margin: 6px 0; }
+    .bubble.bot ul, .bubble.bot ol { padding-left: 20px; margin: 6px 0; }
+    .bubble.bot li { margin: 3px 0; }
+    .bubble.bot strong { font-weight: 600; }
+    .bubble.bot table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin: 10px 0;
+    }
+    .bubble.bot th {
+      background: var(--green-dark);
+      color: var(--white);
+      padding: 6px 10px;
+      text-align: left;
+      font-weight: 500;
+    }
+    .bubble.bot td {
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--grey-200);
+    }
+    .bubble.bot tr:nth-child(even) td { background: var(--grey-50); }
+    .bubble.bot pre {
+      margin: 10px 0;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .bubble.bot code:not(pre code) {
+      background: var(--green-bg);
+      color: var(--green-dark);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: 'Fira Mono', monospace;
+      font-size: 12px;
+    }
+    .bubble.bot blockquote {
+      border-left: 3px solid var(--green-light);
+      padding-left: 12px;
+      color: var(--grey-700);
+      margin: 8px 0;
+    }
+
+    /* ── Thinking indicator ── */
+    .thinking {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 4px 2px;
+    }
+    .thinking span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--grey-400);
+      animation: bounce .9s infinite ease-in-out;
+    }
+    .thinking span:nth-child(2) { animation-delay: .15s; }
+    .thinking span:nth-child(3) { animation-delay: .30s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30%            { transform: translateY(-6px); }
+    }
+
+    /* ── Suggestions ── */
+    #suggestions {
+      padding: 16px 24px 0;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    #suggestions p {
+      font-size: 12px;
+      color: var(--grey-400);
+      margin-bottom: 8px;
+    }
+    .suggestion-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .suggestion {
+      background: var(--white);
+      border: 1px solid var(--grey-200);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--grey-700);
+      cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+      text-align: left;
+    }
+    .suggestion:hover {
+      border-color: var(--green-mid);
+      box-shadow: 0 0 0 3px rgba(0,163,92,.1);
+      color: var(--green-dark);
+    }
+    .suggestion .icon { margin-right: 6px; }
+
+    /* ── Input bar ── */
+    #input-area {
+      background: var(--white);
+      border-top: 1px solid var(--grey-200);
+      padding: 16px 24px;
+      flex-shrink: 0;
+    }
+    .input-inner {
+      display: flex;
+      gap: 10px;
+      max-width: 900px;
+      margin: 0 auto;
+      align-items: flex-end;
+    }
+    #msg {
+      flex: 1;
+      border: 1px solid var(--grey-200);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      max-height: 120px;
+      overflow-y: auto;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    #msg:focus {
+      border-color: var(--green-mid);
+      box-shadow: 0 0 0 3px rgba(0,163,92,.15);
+    }
+    #msg::placeholder { color: var(--grey-400); }
+    #send {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--green-dark);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    #send:hover  { background: var(--green-mid); }
+    #send:active { background: #00503A; }
+    #send:disabled { background: var(--grey-200); cursor: not-allowed; }
+    #send svg { color: var(--white); }
+
+    /* ── Error toast ── */
+    .error-pill {
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+      color: #DC2626;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      display: inline-block;
+    }
+
+    /* ── Scroll to bottom ── */
+    #scroll-btn {
+      position: fixed;
+      bottom: 90px;
+      right: 28px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--green-dark);
+      color: var(--white);
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-md);
+      z-index: 10;
+    }
+    #scroll-btn.visible { display: flex; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔍</div>
+  <h1>Fraud Analyst</h1>
+  <span class="subtitle">Powered by MongoDB Atlas &amp; Claude</span>
+</header>
+
+<div id="chat"></div>
+
+<div id="suggestions">
+  <p>Try asking</p>
+  <div class="suggestion-grid">
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="Show me all fraud cases involving new devices in the last week">
+      <span class="icon">📱</span>New device fraud this week
+    </button>
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="What's the most common indicator combination for high-score fraud alerts?">
+      <span class="icon">📊</span>Common indicator combos
+    </button>
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="Which countries have the highest fraud rates?">
+      <span class="icon">🌍</span>Fraud by country
+    </button>
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="Is user_00042 a fraud risk? Show their profile and history.">
+      <span class="icon">👤</span>User risk profile
+    </button>
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="What's the average fraud score broken down by transaction type?">
+      <span class="icon">💳</span>Fraud score by txn type
+    </button>
+    <button class="suggestion" onclick="sendSuggestion(this.dataset.q)" data-q="Show high-amount mobile transactions flagged in the last 30 days">
+      <span class="icon">🚨</span>High-amount mobile fraud
+    </button>
+  </div>
+</div>
+
+<button id="scroll-btn" onclick="scrollToBottom()" title="Scroll to bottom">↓</button>
+
+<div id="input-area">
+  <div class="input-inner">
+    <textarea id="msg" rows="1" placeholder="Ask anything about fraud patterns, users, or transactions…"></textarea>
+    <button id="send" onclick="sendMessage()" title="Send">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  // ── Config ──────────────────────────────────────────────────────────────
+  const TOOL_ICONS = {
+    search_fraud_cases:   '🔍',
+    run_aggregation:      '📊',
+    get_user_risk_profile:'👤',
+  };
+
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    highlight(code, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    },
+  });
+
+  // ── State ────────────────────────────────────────────────────────────────
+  const history = [];   // [{role, content}]
+  let busy = false;
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+  const chat    = document.getElementById('chat');
+  const msgEl   = document.getElementById('msg');
+  const sendBtn = document.getElementById('send');
+  const sugBox  = document.getElementById('suggestions');
+
+  // ── Auto-resize textarea ──────────────────────────────────────────────────
+  msgEl.addEventListener('input', () => {
+    msgEl.style.height = 'auto';
+    msgEl.style.height = Math.min(msgEl.scrollHeight, 120) + 'px';
+  });
+  msgEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  // ── Scroll helpers ────────────────────────────────────────────────────────
+  const scrollBtn = document.getElementById('scroll-btn');
+  chat.addEventListener('scroll', () => {
+    const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
+    scrollBtn.classList.toggle('visible', !nearBottom);
+  });
+  function scrollToBottom() {
+    chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  }
+  function autoScroll() {
+    const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 200;
+    if (nearBottom) chat.scrollTop = chat.scrollHeight;
+  }
+
+  // ── Message rendering ─────────────────────────────────────────────────────
+  function addUserMessage(text) {
+    const row = document.createElement('div');
+    row.className = 'message-row user';
+    row.innerHTML = `
+      <div class="bubble user">${escHtml(text)}</div>
+      <div class="avatar user">U</div>
+    `;
+    chat.appendChild(row);
+    sugBox.style.display = 'none';
+    scrollToBottom();
+    return row;
+  }
+
+  function addBotRow() {
+    const row = document.createElement('div');
+    row.className = 'message-row system';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar bot';
+    avatar.textContent = '⚡';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble bot';
+
+    const toolsDiv = document.createElement('div');
+    toolsDiv.className = 'tool-calls';
+    bubble.appendChild(toolsDiv);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'bot-content';
+    bubble.appendChild(contentDiv);
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    chat.appendChild(row);
+    autoScroll();
+
+    return { row, toolsDiv, contentDiv };
+  }
+
+  function showThinking(contentDiv) {
+    contentDiv.innerHTML = `<div class="thinking"><span></span><span></span><span></span></div>`;
+  }
+
+  function addToolPill(toolsDiv, label) {
+    const icon = TOOL_ICONS[label.split(':')[0].trim()] ?? '⚙️';
+    // statusLabel format is e.g. "Searching: \"...\""
+    const pill = document.createElement('div');
+    pill.className = 'tool-pill';
+    pill.innerHTML = `<div class="dot"></div>${icon} ${escHtml(label)}`;
+    toolsDiv.appendChild(pill);
+    autoScroll();
+  }
+
+  function setContent(contentDiv, text) {
+    contentDiv.innerHTML = marked.parse(text);
+    contentDiv.querySelectorAll('pre code').forEach((el) => hljs.highlightElement(el));
+    autoScroll();
+  }
+
+  function showError(contentDiv, msg) {
+    contentDiv.innerHTML = `<div class="error-pill">⚠ ${escHtml(msg)}</div>`;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = msgEl.value.trim();
+    if (!text || busy) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+    msgEl.value = '';
+    msgEl.style.height = 'auto';
+
+    addUserMessage(text);
+    const { toolsDiv, contentDiv } = addBotRow();
+    showThinking(contentDiv);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history }),
+      });
+
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let assistantText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'status') {
+            // Map tool name from statusLabel back to pill display
+            const toolName = event.text.startsWith('Searching')     ? 'search_fraud_cases'
+                           : event.text.startsWith('Aggregating')   ? 'run_aggregation'
+                           : event.text.startsWith('Looking up')    ? 'get_user_risk_profile'
+                           : 'tool';
+            addToolPill(toolsDiv, event.text);
+            showThinking(contentDiv);
+          } else if (event.type === 'token') {
+            assistantText = event.text;
+            setContent(contentDiv, assistantText);
+          } else if (event.type === 'error') {
+            showError(contentDiv, event.text);
+          } else if (event.type === 'done') {
+            break;
+          }
+        }
+      }
+
+      // Persist to history
+      history.push({ role: 'user', content: text });
+      history.push({ role: 'assistant', content: assistantText });
+
+    } catch (err) {
+      showError(contentDiv, err.message);
+    }
+
+    busy = false;
+    sendBtn.disabled = false;
+    msgEl.focus();
+  }
+
+  function sendSuggestion(q) {
+    msgEl.value = q;
+    sendMessage();
+  }
+
+  // Focus input on load
+  msgEl.focus();
+</script>
+</body>
+</html>
