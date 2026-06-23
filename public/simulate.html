@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fraud Detection &amp; Agent · MongoDB</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green-dark:  #00684A;
+      --green-mid:   #00A35C;
+      --green-light: #00ED64;
+      --green-bg:    #E8F5EE;
+      --grey-50:     #F9FAFB;
+      --grey-100:    #F3F4F6;
+      --grey-200:    #E5E7EB;
+      --grey-400:    #9CA3AF;
+      --grey-600:    #4B5563;
+      --grey-700:    #374151;
+      --grey-900:    #111827;
+      --red:         #DC2626;
+      --red-bg:      #FEF2F2;
+      --red-border:  #FECACA;
+      --amber:       #D97706;
+      --amber-bg:    #FFFBEB;
+      --amber-border:#FDE68A;
+      --white:       #FFFFFF;
+      --radius:      10px;
+      --shadow:      0 1px 3px rgba(0,0,0,.08);
+      --shadow-md:   0 4px 6px -1px rgba(0,0,0,.1);
+    }
+    html, body { height: 100%; }
+    body { font-family: 'Inter', sans-serif; background: var(--grey-100); color: var(--grey-900); display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Header */
+    header {
+      background: var(--green-dark); height: 56px; padding: 0 20px;
+      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+      box-shadow: var(--shadow-md);
+    }
+    .logo { font-size: 18px; }
+    header h1 { color: white; font-size: 15px; font-weight: 600; }
+    nav { margin-left: auto; display: flex; gap: 4px; }
+    nav a {
+      color: rgba(255,255,255,.65); text-decoration: none; font-size: 13px;
+      padding: 5px 12px; border-radius: 6px; transition: all .15s;
+    }
+    nav a:hover { background: rgba(255,255,255,.1); color: white; }
+    nav a.active { background: rgba(255,255,255,.15); color: white; font-weight: 500; }
+
+    /* Layout */
+    .page { flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 0; overflow: hidden; height: calc(100vh - 56px); }
+
+    /* Scenarios panel */
+    .scenarios-panel {
+      background: var(--white); border-right: 1px solid var(--grey-200);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .panel-header {
+      padding: 16px; border-bottom: 1px solid var(--grey-200); flex-shrink: 0;
+    }
+    .panel-header h2 { font-size: 12px; font-weight: 600; color: var(--grey-400); text-transform: uppercase; letter-spacing: .6px; }
+    .panel-header p { font-size: 12px; color: var(--grey-400); margin-top: 4px; }
+    .scenarios { padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+
+    .scenario-card {
+      border: 1.5px solid var(--grey-200); border-radius: var(--radius);
+      padding: 12px 14px; cursor: pointer; transition: all .15s;
+      background: var(--white);
+    }
+    .scenario-card:hover { border-color: var(--green-mid); box-shadow: 0 0 0 3px rgba(0,163,92,.1); }
+    .scenario-card.selected { border-color: var(--green-dark); background: var(--green-bg); }
+    .scenario-card .s-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .scenario-card .s-desc { font-size: 12px; color: var(--grey-600); margin-top: 5px; line-height: 1.4; }
+    .scenario-card .s-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .tag {
+      font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 4px;
+    }
+    .tag.high    { background: #FEE2E2; color: var(--red); }
+    .tag.medium  { background: var(--amber-bg); color: var(--amber); }
+    .tag.low     { background: var(--green-bg); color: var(--green-dark); }
+    .tag.neutral { background: var(--grey-100); color: var(--grey-600); }
+
+    /* Editor panel */
+    .editor-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+    .editor-header {
+      background: var(--white); border-bottom: 1px solid var(--grey-200);
+      padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    .editor-header h2 { font-size: 14px; font-weight: 600; flex: 1; }
+    .tip { font-size: 12px; color: var(--grey-400); }
+
+    .editor-body { flex: 1; display: flex; flex-direction: column; padding: 20px 24px; gap: 14px; overflow-y: auto; }
+
+    .user-tip {
+      background: var(--amber-bg); border: 1px solid var(--amber-border);
+      border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--amber);
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+
+    #json-editor {
+      flex: 1; min-height: 400px; font-family: 'Fira Mono', monospace; font-size: 12.5px;
+      line-height: 1.6; padding: 16px; border: 1.5px solid var(--grey-200);
+      border-radius: var(--radius); resize: vertical; outline: none;
+      background: #1e1e2e; color: #cdd6f4;
+      transition: border-color .15s;
+    }
+    #json-editor:focus { border-color: var(--green-mid); }
+
+    .actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+    #submit-btn {
+      background: var(--green-dark); color: white; border: none;
+      border-radius: 8px; padding: 10px 22px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background .15s;
+    }
+    #submit-btn:hover:not(:disabled) { background: var(--green-mid); }
+    #submit-btn:disabled { background: var(--grey-200); color: var(--grey-400); cursor: not-allowed; }
+    #reset-btn {
+      background: transparent; color: var(--grey-600); border: 1.5px solid var(--grey-200);
+      border-radius: 8px; padding: 9px 16px; font-size: 13px; cursor: pointer; transition: all .15s;
+    }
+    #reset-btn:hover { border-color: var(--grey-400); color: var(--grey-900); }
+
+    /* Result */
+    #result { display: none; border-radius: var(--radius); padding: 14px 18px; font-size: 13px; }
+    #result.success {
+      background: var(--green-bg); border: 1px solid #B3DFC8; color: var(--green-dark);
+    }
+    #result.error {
+      background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red);
+    }
+    #result .r-title { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+    #result .r-id { font-family: 'Fira Mono', monospace; font-size: 12px; margin-top: 4px; }
+    #result .r-next { margin-top: 10px; font-size: 12px; }
+    #result .r-next a { color: var(--green-dark); font-weight: 600; }
+    #result .r-next a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡</div>
+  <h1>Fraud Detection &amp; Agent</h1>
+  <nav>
+    <a href="/simulate.html" class="active">Transaction Simulator</a>
+    <a href="/investigate.html">Investigator</a>
+    <a href="/">Analyst Chat</a>
+  </nav>
+</header>
+
+<div class="page">
+
+  <!-- Preset scenarios -->
+  <div class="scenarios-panel">
+    <div class="panel-header">
+      <h2>Preset Scenarios</h2>
+      <p>Click a scenario to load it into the editor</p>
+    </div>
+    <div class="scenarios" id="scenarios"></div>
+  </div>
+
+  <!-- JSON editor -->
+  <div class="editor-panel">
+    <div class="editor-header">
+      <h2>Transaction JSON</h2>
+      <span class="tip">Edit any field before submitting · <code>status</code> is always set to <code>"pending"</code> automatically</span>
+    </div>
+    <div class="editor-body">
+      <div class="user-tip">
+        ⚠ Change <strong>user_id</strong> to one that exists in your <code>user_profiles</code> collection — the stream processor joins on this field to score the transaction.
+      </div>
+      <textarea id="json-editor" spellcheck="false"></textarea>
+      <div id="result"></div>
+      <div class="actions">
+        <button id="submit-btn" onclick="submitTransaction()">⚡ Insert Transaction</button>
+        <button id="reset-btn" onclick="resetEditor()">↺ Reset</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Scenario definitions ────────────────────────────────────────────────
+  const SCENARIOS = [
+    {
+      title: 'All Indicators Fire',
+      icon: '🔴',
+      desc: 'High amount + unfamiliar country + unknown device. Guarantees a fraud score ≥ 75 and triggers all three rules.',
+      tags: [{ label: 'high_amount', cls: 'high' }, { label: 'unusual_location', cls: 'high' }, { label: 'new_device', cls: 'high' }],
+      txn: {
+        user_id: 'user_00001',
+        account_id: 'acc_00001',
+        amount: 4800,
+        currency: 'USD',
+        transaction_type: 'purchase',
+        merchant: { merchant_id: 'merch_999', merchant_name: 'Unknown Electronics', merchant_category: '5732', merchant_country: 'NG' },
+        location: { ip_address: '41.203.64.1', country: 'NG', city: 'Lagos', coordinates: { type: 'Point', coordinates: [3.3792, 6.5244] } },
+        device: { device_id: 'dev_unknown_new_001', device_type: 'mobile', os: 'Android 14', browser: 'Chrome' },
+        payment_method: { type: 'credit_card', last_four: '9999', card_brand: 'visa' },
+        metadata: {}
+      }
+    },
+    {
+      title: 'Unusual Location',
+      icon: '🌍',
+      desc: 'Normal amount and known device, but transaction originates from a high-risk country the user has never transacted in.',
+      tags: [{ label: 'unusual_location', cls: 'high' }, { label: 'high_amount', cls: 'neutral' }, { label: 'new_device', cls: 'neutral' }],
+      txn: {
+        user_id: 'user_00001',
+        account_id: 'acc_00001',
+        amount: 250,
+        currency: 'USD',
+        transaction_type: 'purchase',
+        merchant: { merchant_id: 'merch_pk_01', merchant_name: 'City Mart', merchant_category: '5411', merchant_country: 'PK' },
+        location: { ip_address: '39.33.33.10', country: 'PK', city: 'Karachi', coordinates: { type: 'Point', coordinates: [67.0099, 24.8607] } },
+        device: { device_id: 'dev_abc123', device_type: 'mobile', os: 'iOS 17', browser: 'Safari' },
+        payment_method: { type: 'credit_card', last_four: '4242', card_brand: 'visa' },
+        metadata: {}
+      }
+    },
+    {
+      title: 'High Amount Only',
+      icon: '💸',
+      desc: 'Familiar location and known device, but the amount is 5× the user\'s average. Borderline — may or may not cross the fraud threshold.',
+      tags: [{ label: 'high_amount', cls: 'medium' }, { label: 'unusual_location', cls: 'neutral' }, { label: 'new_device', cls: 'neutral' }],
+      txn: {
+        user_id: 'user_00001',
+        account_id: 'acc_00001',
+        amount: 3200,
+        currency: 'USD',
+        transaction_type: 'purchase',
+        merchant: { merchant_id: 'merch_us_jewel', merchant_name: 'Diamond Jewelers', merchant_category: '5944', merchant_country: 'US' },
+        location: { ip_address: '72.21.210.29', country: 'US', city: 'New York', coordinates: { type: 'Point', coordinates: [-74.0060, 40.7128] } },
+        device: { device_id: 'dev_abc123', device_type: 'mobile', os: 'iOS 17', browser: 'Safari' },
+        payment_method: { type: 'credit_card', last_four: '4242', card_brand: 'visa' },
+        metadata: {}
+      }
+    },
+    {
+      title: 'New Device',
+      icon: '📱',
+      desc: 'Correct location and normal amount, but the transaction comes from a device the user has never used before.',
+      tags: [{ label: 'new_device', cls: 'medium' }, { label: 'high_amount', cls: 'neutral' }, { label: 'unusual_location', cls: 'neutral' }],
+      txn: {
+        user_id: 'user_00001',
+        account_id: 'acc_00001',
+        amount: 180,
+        currency: 'USD',
+        transaction_type: 'purchase',
+        merchant: { merchant_id: 'merch_amzn', merchant_name: 'Amazon', merchant_category: '5999', merchant_country: 'US' },
+        location: { ip_address: '72.21.210.29', country: 'US', city: 'New York', coordinates: { type: 'Point', coordinates: [-74.0060, 40.7128] } },
+        device: { device_id: 'dev_brand_new_999', device_type: 'desktop', os: 'Windows 11', browser: 'Edge' },
+        payment_method: { type: 'credit_card', last_four: '4242', card_brand: 'visa' },
+        metadata: {}
+      }
+    },
+    {
+      title: 'Clean Transaction',
+      icon: '✅',
+      desc: 'Familiar location, known device, normal amount. Should pass through the pipeline without triggering any fraud indicators.',
+      tags: [{ label: 'high_amount', cls: 'neutral' }, { label: 'unusual_location', cls: 'neutral' }, { label: 'new_device', cls: 'neutral' }],
+      txn: {
+        user_id: 'user_00001',
+        account_id: 'acc_00001',
+        amount: 45,
+        currency: 'USD',
+        transaction_type: 'purchase',
+        merchant: { merchant_id: 'merch_coffee', merchant_name: 'Blue Bottle Coffee', merchant_category: '5812', merchant_country: 'US' },
+        location: { ip_address: '72.21.210.29', country: 'US', city: 'New York', coordinates: { type: 'Point', coordinates: [-74.0060, 40.7128] } },
+        device: { device_id: 'dev_abc123', device_type: 'mobile', os: 'iOS 17', browser: 'Safari' },
+        payment_method: { type: 'credit_card', last_four: '4242', card_brand: 'visa' },
+        metadata: {}
+      }
+    },
+  ];
+
+  // ── Render scenarios ────────────────────────────────────────────────────
+  let selectedIndex = 0;
+
+  function renderScenarios() {
+    const el = document.getElementById('scenarios');
+    el.innerHTML = SCENARIOS.map((s, i) => `
+      <div class="scenario-card ${i === selectedIndex ? 'selected' : ''}" onclick="selectScenario(${i})">
+        <div class="s-title">${s.icon} ${s.title}</div>
+        <div class="s-desc">${s.desc}</div>
+        <div class="s-tags">
+          ${s.tags.map(t => `<span class="tag ${t.cls}">${t.label}</span>`).join('')}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function selectScenario(i) {
+    selectedIndex = i;
+    renderScenarios();
+    loadScenario(i);
+    clearResult();
+  }
+
+  function loadScenario(i) {
+    const txn = {
+      transaction_id: `txn_demo_${Date.now()}`,
+      ...SCENARIOS[i].txn,
+      timestamp: new Date().toISOString(),
+    };
+    document.getElementById('json-editor').value = JSON.stringify(txn, null, 2);
+  }
+
+  function resetEditor() {
+    loadScenario(selectedIndex);
+    clearResult();
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+  async function submitTransaction() {
+    const editor = document.getElementById('json-editor');
+    const btn = document.getElementById('submit-btn');
+
+    let txn;
+    try {
+      txn = JSON.parse(editor.value);
+    } catch (e) {
+      showResult('error', 'Invalid JSON', e.message);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⟳ Inserting…';
+    clearResult();
+
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txn),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showResult('error', 'Insert failed', data.error ?? `HTTP ${res.status}`);
+      } else {
+        showResult('success', 'Transaction inserted', data.transaction_id);
+        // Fresh ID for the next insert
+        txn.transaction_id = `txn_demo_${Date.now()}`;
+        txn.timestamp = new Date().toISOString();
+        editor.value = JSON.stringify(txn, null, 2);
+      }
+    } catch (e) {
+      showResult('error', 'Network error', e.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '⚡ Insert Transaction';
+  }
+
+  function showResult(type, title, detail) {
+    const el = document.getElementById('result');
+    el.className = type;
+    el.style.display = 'block';
+
+    if (type === 'success') {
+      el.innerHTML = `
+        <div class="r-title">✓ Transaction inserted</div>
+        <div class="r-id">${detail}</div>
+        <div class="r-next">
+          The stream processor will score it within seconds.<br>
+          Check the <a href="/investigate.html">Investigator</a> or ask the <a href="/">Analyst Chat</a> about it.
+        </div>
+      `;
+    } else {
+      el.innerHTML = `<div class="r-title">⚠ ${title}</div><div>${detail}</div>`;
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function clearResult() {
+    const el = document.getElementById('result');
+    el.style.display = 'none';
+    el.className = '';
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────────
+  renderScenarios();
+  loadScenario(0);
+</script>
+</body>
+</html>

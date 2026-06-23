@@ -104,7 +104,7 @@ const searchSimilarFraudTool = tool(
               query: query_text,
               numCandidates: k * 10,
               limit: k,
-              model: "voyage-4",
+              model: "voyage-4-lite",
             },
           },
           {
