@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fraud Detection &amp; Agent · MongoDB</title>
+  <title>Fraud Detection &amp; Agent Demo · MongoDB</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -46,10 +46,11 @@
       gap: 12px;
       flex-shrink: 0;
       box-shadow: var(--shadow-md);
+      position: relative;
     }
     .logo { font-size: 18px; }
     header h1 { color: white; font-size: 15px; font-weight: 600; }
-    nav { margin-left: auto; display: flex; gap: 4px; }
+    nav { margin-left: auto; display: flex; gap: 16px; }
     nav a {
       color: rgba(255,255,255,.7);
       text-decoration: none;
@@ -307,11 +308,12 @@
 
 <header>
   <div class="logo">🔎</div>
-  <h1>Fraud Detection &amp; Agent</h1>
+  <h1>Fraud Detection &amp; Agent Demo</h1>
+  <span style="position:absolute;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.9);font-size:19px;font-weight:500;letter-spacing:.5px">Powered by MongoDB</span>
   <nav>
     <a href="/simulate.html">Transaction Simulator</a>
-    <a href="/investigate.html" class="active">Investigator</a>
-    <a href="/">Analyst Chat</a>
+    <a href="/investigate.html" class="active">Fraud Investigator (Agent)</a>
+    <a href="/">Interactive Analyst (Chatbot)</a>
   </nav>
 </header>
 

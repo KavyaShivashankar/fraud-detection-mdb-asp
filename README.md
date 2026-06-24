@@ -1,270 +1,328 @@
-# Fraud Detection System with MongoDB Atlas Stream Processing
+# Fraud Detection & Agent Demo — Powered by MongoDB
 
-A real-time fraud detection system built with MongoDB Atlas Stream Processing that analyzes financial transactions and identifies potentially fraudulent activity.
+A demoable end-to-end fraud detection system built on MongoDB Atlas. Combines real-time stream processing, AI agents with tool-calling, and Atlas Vector Search in a single web interface designed for customer-facing demos.
 
-## 🏗️ Architecture
+---
 
-This system uses MongoDB Atlas Stream Processing to analyze transactions in real-time as they are inserted into the database. The stream processing pipeline:
+## What This Demo Shows
 
-1. **Monitors** incoming transactions from the `transactions` collection
-2. **Enriches** transaction data with user profile information
-3. **Calculates** fraud scores based on multiple indicators
-4. **Flags** suspicious transactions automatically
-5. **Outputs** processed transactions to the `processed_transactions` collection
+| MongoDB Capability | Where It Appears |
+|---|---|
+| Atlas Stream Processing | Scores incoming transactions in real time, writes flagged cases to `fraud_transactions` |
+| Atlas Vector Search (autoEmbed) | Semantic search over historical fraud cases — no client-side embedding required |
+| Atlas Search (lexical / BM25) | Keyword search over merchant names, locations, device types, and fraud indicators |
+| Hybrid Search (`$rankFusion`) | Combines vector + lexical results via Reciprocal Rank Fusion for best recall |
+| Document model | Nested fraud indicators, device metadata, and investigation notes in a single record |
+| AI agent with tool-calling | LangChain + Claude Sonnet investigates a case, writes findings back, routes to human or auto-close |
+| Natural language → MQL | Conversational analyst generates and runs live aggregation pipelines from plain English |
 
-## 📊 Data Models
+---
 
-### Transaction
-- Transaction details (amount, currency, type)
-- Merchant information
-- Location data (with geospatial coordinates)
-- Device fingerprint
-- Payment method details
-- Fraud detection results
+## Architecture
 
-### User Profile
-- User identification and status
-- Historical transaction patterns
-- Risk profile
-- Account limits
-- Known devices and locations
+```
+Browser (simulate.html)
+        │
+        │  POST /api/transactions
+        ▼
+┌─────────────────────────────────────┐
+│  transactions collection (Atlas)    │  ← insert here to trigger the pipeline
+└──────────────────┬──────────────────┘
+                   │
+                   │  Atlas Stream Processing
+                   │  (continuous aggregation on change stream)
+                   ▼
+          ┌─────────────────┐
+          │  Scoring logic  │  $lookup user_profiles → evaluate 3 signals
+          │  high_amount    │  score ≥ 70 → flagged
+          │  unusual_loc    │
+          │  new_device     │
+          └────────┬────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────┐
+│  fraud_transactions collection       │  ← flagged cases land here
+│  (includes autoEmbed vector field)   │
+└──────────────────────────────────────┘
+        │                    │
+        │                    │
+        ▼                    ▼
+Investigation Agent    Interactive Analyst
+(investigate.html)     (index.html)
+  4-tool LangChain       Conversational chatbot
+  agent streams          generates + runs MQL
+  findings via SSE       via SSE
+```
 
-### Fraud Alert
-- Alert metadata and severity
-- Fraud indicators and scores
-- Investigation tracking
-- Automated actions taken
-- Notification status
+---
 
-## 🔍 Fraud Detection Rules
+## The Three UI Surfaces
 
-The system detects fraud using multiple indicators:
+### Transaction Simulator (`/simulate.html`)
+Inject test transactions directly from the browser using preset fraud scenarios. Five presets cover common patterns: all indicators firing, unusual location only, high amount only, new device only, and a clean baseline. Each submission posts to `POST /api/transactions`, which writes to the `transactions` collection and lets Atlas Stream Processing score it.
 
-1. **Amount Anomaly**: Transactions significantly higher than user's average
-2. **Velocity Check**: Too many transactions in a short time period
-3. **Geographic Anomaly**: Transactions from unusual or high-risk locations
-4. **Device Fingerprint**: Transactions from unknown devices
-5. **Merchant Pattern**: Large transactions with new merchants
-6. **Time Pattern**: Transactions during unusual hours
+### Fraud Investigator (`/investigate.html`)
+Displays the 30 most recent flagged cases from `fraud_transactions`. Clicking a case launches the investigation agent, which streams its reasoning steps to the browser in real time via Server-Sent Events. The agent runs four tools in sequence, writes its findings and routing decision back to the document, and renders a final markdown report.
 
-Each indicator contributes to an overall fraud score (0-100), with thresholds:
-- **Low Risk**: 0-29
-- **Medium Risk**: 30-49
-- **High Risk**: 50-69
-- **Critical**: 70-100
+### Interactive Analyst (`/`)
+A conversational chat interface backed by a three-tool fraud analyst agent. Ask natural language questions — the agent determines whether to run a search, generate an aggregation, or fetch a user risk profile, then streams the response token by token.
 
-## 🚀 Getting Started
+A **search mode toggle** (Hybrid / Vector / Lexical) sits above the input bar and controls how `search_fraud_cases` retrieves results for that session:
+
+| Mode | Mechanism | Best for |
+|---|---|---|
+| **Hybrid** (default) | `$rankFusion` combining vector + lexical via RRF (60/40 weight) | Best overall recall |
+| **Vector** | `$vectorSearch` with autoEmbed (voyage-4) | Conceptual / pattern queries |
+| **Lexical** | `$search` with BM25 over key fields | Exact merchant names, countries, device types |
+
+---
+
+## The AI Agents
+
+### Investigation Agent (`src/agents/fraud-investigation-stream.js`)
+
+Runs a fixed four-step protocol on a single `transaction_id`:
+
+1. `fetch_fraud_transaction` — retrieves the flagged record
+2. `fetch_user_history` — retrieves behavioral profile and recent transactions in parallel
+3. `search_similar_fraud_cases` — semantic vector search for top-5 similar historical cases
+4. `write_investigation_findings` — writes case notes and `route_to_human` decision back to the document
+
+Implemented as an async generator that yields typed SSE events: `step_start`, `step_done`, `token`, `done`, `error`. The web UI renders each step as a timeline card and the final report as markdown.
+
+There is also a CLI version (`src/agents/fraud-investigation-agent.js`) that takes `transaction_id` as a command-line argument and is kept separate — the web agent does not modify it.
+
+### Fraud Analyst Chatbot (`src/agents/fraud-analyst-chat.js`)
+
+Conversational agent with three tools:
+
+| Tool | What it does |
+|---|---|
+| `search_fraud_cases` | Vector, lexical, or hybrid search over `fraud_transactions` — mode controlled by the UI toggle |
+| `run_aggregation` | Executes model-generated MongoDB aggregation pipelines. Blocks `$out` and `$merge`; caps results at 50 |
+| `get_user_risk_profile` | Fetches `user_profiles` + fraud history + recent transactions in a single parallel read |
+
+The `run_aggregation` tool is the key capability: the model translates natural language into a valid MQL aggregation pipeline, which Atlas executes directly. The model sees the result set, not a bulk dump of raw data.
+
+The `search_fraud_cases` tool supports three modes passed as a `mode` parameter. Hybrid mode uses `$rankFusion` to merge a `$vectorSearch` sub-pipeline and a `$search` (BM25) sub-pipeline, with weights 0.6 / 0.4. The active mode is injected into the agent's system prompt at request time based on the user's toggle selection.
+
+---
+
+## Collections
+
+### `transactions`
+Source collection. Every document inserted here is picked up by the Stream Processing pipeline. The pipeline writes `fraud_score`, `fraud_indicators`, `status`, and `is_fraudulent` back to the same document via `$merge`.
+
+### `fraud_transactions`
+Read model for flagged cases. Populated by Stream Processing when `fraud_score ≥ 70`. Contains the scored transaction plus an `investigation` subdocument that the agent populates after running. Also contains a `text` field used by the autoEmbed vector index.
+
+### `user_profiles`
+Behavioral baselines per user: `avg_transaction_amount`, `frequent_locations`, `known_devices`. The stream processor does a `$lookup` against this collection when scoring each transaction.
+
+---
+
+## Atlas Stream Processing Pipeline
+
+Defined in `stream-processing/fraud-detection-pipeline.json`. The pipeline:
+
+1. Sources from `fraud_detection.transactions` on insert/update/replace
+2. Filters for `status: "pending"` documents
+3. `$lookup` against `user_profiles` to get the user's behavioral baseline
+4. Evaluates three fraud signals using `$cond` + `$concatArrays`:
+   - `high_amount`: transaction amount > 3× user's average
+   - `unusual_location`: transaction country not in user's frequent locations
+   - `new_device`: device ID not in user's known devices
+5. Computes `fraud_score` (high_amount: 25pts, unusual_location: 30pts, new_device: 20pts)
+6. `$merge` back to `transactions`, setting `status`, `is_fraudulent`, `fraud_score`, and `fraud_indicators`
+
+Transactions scoring ≥ 70 are written separately to `fraud_transactions` for the investigation UI.
+
+---
+
+## Atlas Search Indexes
+
+### Vector Search Index (`indexes/fraud_transactions_text_index.json`)
+
+```json
+{
+  "fields": [
+    {
+      "type": "autoEmbed",
+      "model": "voyage-4",
+      "path": "text",
+      "modality": "text"
+    }
+  ]
+}
+```
+
+`autoEmbed` means Atlas generates and stores the embedding at write time using Voyage AI's `voyage-4` model. At query time, `$vectorSearch` accepts a plain `query: "text string"` — no client-side embedding call, no Voyage API key required in the application.
+
+### Lexical Search Index (`indexes/fraud_transactions_lexical_index.json`)
+
+```json
+{
+  "name": "fraud_transactions_lexical",
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "text":             [{ "type": "string" }],
+      "fraud_indicators": [{ "type": "string" }],
+      "merchant":         { "type": "document", "fields": { "merchant_name": [...], "merchant_country": [...] } },
+      "location":         { "type": "document", "fields": { "country": [...], "city": [...] } },
+      "device":           { "type": "document", "fields": { "device_type": [...], "os": [...] } }
+    }
+  }
+}
+```
+
+BM25 full-text index for keyword search. Powers the **Lexical** mode and the lexical sub-pipeline in **Hybrid** mode. Create this index in the Atlas UI under **Atlas Search** → `fraud_detection.fraud_transactions` with name `fraud_transactions_lexical`.
+
+Both indexes must exist on the `fraud_transactions` collection for all three search modes to work. The Vector index alone is sufficient if you only use Vector mode.
+
+---
+
+## Setup
 
 ### Prerequisites
 
-- Node.js 18+ installed
-- MongoDB Atlas account with a cluster
-- Atlas Stream Processing enabled on your cluster
+- Node.js 18+
+- MongoDB Atlas cluster with Atlas Stream Processing enabled
+- Atlas Vector Search index (`fraud_transactions_text_index`) created on `fraud_transactions`
+- Atlas Search lexical index (`fraud_transactions_lexical`) created on `fraud_transactions`
+- Anthropic API key (Claude Sonnet)
 
-### Installation
+### Environment
 
-1. Clone this repository:
-```bash
-git clone <repository-url>
-cd fraud_detection_example
+Create `.env` in the project root:
+
+```
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-2. Install dependencies:
+`VOYAGE_API_KEY` is not required — embeddings are handled by Atlas autoEmbed.
+
+### Install
+
 ```bash
 npm install
 ```
 
-3. Configure environment variables:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your MongoDB Atlas connection string:
-```
-MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
-```
-
 ### Generate Sample Data
-
-Generate sample users and transactions for testing:
 
 ```bash
 npm run generate-data
 ```
 
-This creates:
-- 50 user profiles with realistic patterns
-- 1,000 transactions (5% potentially fraudulent)
-- Necessary indexes for optimal performance
+Creates 50 user profiles and 1,000 transactions in the `fraud_detection` database.
 
-## 📡 Deploy Stream Processing Pipeline
+### Deploy the Stream Processing Pipeline
 
-### Option 1: Using Atlas UI
+In the Atlas UI: navigate to Stream Processing → create a processor → paste the contents of `stream-processing/fraud-detection-pipeline.json`.
 
-1. Log in to MongoDB Atlas
-2. Navigate to your cluster
-3. Click on "Stream Processing" in the left sidebar
-  a. Create a workspace if you haven't already
-  b. Create a connection to your cluster
-4. Click "Create Stream Processor"
-5. Name it `fraud-detection-processor`
-6. Copy the pipeline from `stream-processing/fraud-detection-pipeline.json`
-7. Configure:
-   - **Source**: `fraud_detection.transactions`
-   - **Sink**: `fraud_detection.processed_transactions`
-8. Click "Start Processor"
-
-### Option 2: Using Atlas CLI
+Or use the deploy script:
 
 ```bash
-# Set your Atlas project ID
-export ATLAS_PROJECT_ID=your-project-id
-
-# Run the deployment script
-cd stream-processing
-chmod +x deploy-stream-processor.sh
-./deploy-stream-processor.sh
+node scripts/deploy-asp.js
 ```
 
-## 🏃 Running the Application
-
-Start the fraud detection monitoring application:
+### Run the Web Demo
 
 ```bash
-npm start
+npm run chat
 ```
 
-The application will:
-- Connect to your Atlas cluster
-- Display a dashboard with fraud statistics
-- Monitor processed transactions in real-time
-- Create fraud alerts for suspicious transactions
+Opens the full web UI at `http://localhost:3000`. All three pages are served from here.
 
-## 📁 Project Structure
+### Run the CLI Investigation Agent
+
+```bash
+npm run investigate <transaction_id>
+```
+
+Runs the terminal version of the investigation agent against a specific transaction ID.
+
+---
+
+## Project Structure
 
 ```
-fraud_detection_example/
+.
 ├── config/
-│   └── atlas-config.js          # MongoDB Atlas configuration
-├── models/
-│   ├── transaction.js            # Transaction data model
-│   ├── user.js                   # User profile data model
-│   └── fraud_alert.js            # Fraud alert data model
-├── src/
-│   ├── index.js                  # Main application
-│   └── fraud-detector.js         # Fraud detection engine
+│   └── atlas-config.js                  # Connection string + database name
+├── indexes/
+│   ├── fraud_transactions_text_index.json    # autoEmbed vector index (voyage-4)
+│   ├── fraud_transactions_lexical_index.json # Atlas Search BM25 lexical index
+│   └── user_profiles_text_index.json
+├── public/                              # Static web UI (served by Express)
+│   ├── index.html                       # Interactive Analyst (chatbot)
+│   ├── investigate.html                 # Fraud Investigator (agent)
+│   └── simulate.html                   # Transaction Simulator
 ├── scripts/
-│   └── generate-sample-data.js   # Sample data generator
+│   ├── deploy-asp.js                    # Deploy the stream processing pipeline
+│   └── generate-sample-data.js         # Seed users + transactions
+├── src/
+│   ├── agents/
+│   │   ├── fraud-analyst-chat.js        # Conversational analyst agent (generator)
+│   │   ├── fraud-investigation-agent.js # CLI investigation agent
+│   │   └── fraud-investigation-stream.js # Web investigation agent (SSE generator)
+│   ├── server.js                        # Express server — API routes + static serving
+│   └── index.js                         # Legacy entry point
 ├── stream-processing/
-│   ├── fraud-detection-pipeline.js    # Stream processing pipeline (JS)
-│   ├── fraud-detection-pipeline.json  # Stream processing pipeline (JSON)
-│   └── deploy-stream-processor.sh     # Deployment script
-├── .env.example                  # Environment variables template
-├── package.json                  # Node.js dependencies
-└── README.md                     # This file
+│   └── fraud-detection-pipeline.json   # Atlas Stream Processing pipeline definition
+├── views/
+│   └── *.json                           # Atlas view definitions
+├── .env                                 # Local environment variables (not committed)
+└── package.json
 ```
 
-## 🔧 Configuration
+---
 
-Edit `config/atlas-config.js` to customize:
+## npm Scripts
 
-- **Fraud thresholds**: Adjust score thresholds for different severity levels
-- **Velocity limits**: Set maximum transactions per hour/day
-- **Geographic settings**: Configure high-risk countries
-- **Device limits**: Set maximum devices per user
-- **Notification settings**: Configure email, SMS, and webhook alerts
+| Script | Command | What it does |
+|---|---|---|
+| `npm run chat` | `node src/server.js` | Start the web demo on port 3000 |
+| `npm run investigate <id>` | `node src/agents/fraud-investigation-agent.js` | CLI agent for a single transaction |
+| `npm run generate-data` | `node scripts/generate-sample-data.js` | Seed the database with sample data |
+| `npm start` | `node src/index.js` | Legacy monitoring process |
 
-## 📈 Monitoring
+---
 
-### View Fraud Statistics
+## Stream Processor Debug Commands
 
-The application displays real-time statistics including:
-- Total transactions processed
-- Number of fraudulent transactions detected
-- Average fraud score
-- Alerts by severity and status
-
-### Query Fraud Alerts
+Run these in the Atlas Stream Processing shell when troubleshooting the pipeline:
 
 ```javascript
-// Find all open high-severity alerts
-db.fraud_alerts.find({
-  status: "open",
-  severity: "high"
-})
+// Inspect live documents flowing through the source
+sp.process([{
+  "$source": {
+    "connectionName": "democluster",
+    "db": "fraud_detection",
+    "coll": "transactions"
+  }
+}])
 
-// Find alerts for a specific user
-db.fraud_alerts.find({
-  user_id: "user_00001"
-})
+// Check processor stats
+sp["<processor-name>"].stats({ verbose: true })
+
+// Stop / start / drop
+sp["<processor-name>"].stop()
+sp["<processor-name>"].start()
+sp["<processor-name>"].drop()
 ```
 
-## 🧪 Testing
+---
 
-Insert a test transaction to trigger fraud detection:
+## Key Dependencies
 
-```javascript
-db.transactions.insertOne({
-  transaction_id: "txn_test_001",
-  timestamp: new Date(),
-  user_id: "user_00001",
-  account_id: "acc_12345",
-  amount: 15000,  // High amount
-  currency: "USD",
-  transaction_type: "purchase",
-  merchant: {
-    merchant_id: "merch_999",
-    merchant_name: "Unknown Merchant",
-    merchant_category: "5999",
-    merchant_country: "NG"  // High-risk country
-  },
-  location: {
-    ip_address: "192.168.1.1",
-    country: "NG",
-    city: "Lagos",
-    coordinates: { type: "Point", coordinates: [3.3792, 6.5244] }
-  },
-  device: {
-    device_id: "dev_unknown",
-    device_type: "mobile",
-    os: "Android 14",
-    browser: "Chrome"
-  },
-  payment_method: {
-    type: "credit_card",
-    last_four: "9999",
-    card_brand: "visa"
-  },
-  status: "pending"
-})
-```
-## To debug stream processing pipeline
-```javascript
-    sp.process([{
-    "$source": {
-      "coll": "transactions",
-      "connectionName": "democluster",
-      "db": "fraud_detection"
-    }
-  }])
-```
-
-```javascript
-sp["fp_fulldoc_dql_v2"].stats({verbose:true})
-sp["fp_fulldoc_dql_v2"].stop()
-sp["fp_fulldoc_dql_v2"].start()
-sp["fp_fulldoc_dql_v2"].drop()
-```
-
-
-
-## 📚 Learn More
-
-- [MongoDB Atlas Stream Processing Documentation](https://www.mongodb.com/docs/atlas/atlas-stream-processing/)
-- [MongoDB Aggregation Pipeline](https://www.mongodb.com/docs/manual/aggregation/)
-- [Change Streams](https://www.mongodb.com/docs/manual/changeStreams/)
-
-## 📝 License
-
-MIT
-
+| Package | Role |
+|---|---|
+| `mongodb` | Atlas driver — all database reads and writes |
+| `@langchain/anthropic` | Claude Sonnet (`claude-sonnet-4-6`) model binding with `bindTools()` |
+| `@langchain/core` | `HumanMessage`, `SystemMessage`, `ToolMessage` primitives |
+| `langchain` | `tool()` helper for defining agent tools with Zod schemas |
+| `express` | Web server for API routes and static file serving |
+| `zod` | Schema validation for tool input parameters |
+| `dotenv` | Environment variable loading |

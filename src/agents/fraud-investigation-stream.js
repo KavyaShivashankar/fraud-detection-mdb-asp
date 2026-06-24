@@ -165,7 +165,7 @@ function extractText(content) {
 
 async function* runFraudInvestigationStream(transactionId) {
   const model = new ChatAnthropic({
-    model: 'claude-opus-4-8',
+    model: 'claude-sonnet-4-6',
     thinking: { type: 'adaptive' },
   }).bindTools(TOOLS);
 

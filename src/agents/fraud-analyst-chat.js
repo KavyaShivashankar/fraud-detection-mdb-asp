@@ -15,15 +15,77 @@ const MAX_RESULTS = 50;
 // Tools
 // ---------------------------------------------------------------------------
 
+const LEXICAL_PATHS = [
+  'text', 'fraud_indicators',
+  'merchant.merchant_name', 'merchant.merchant_category', 'merchant.merchant_country',
+  'location.country', 'location.city',
+  'device.device_type', 'device.os',
+];
+
+const RESULT_PROJECTION = {
+  _id: 0, transaction_id: 1, user_id: 1, amount: 1, currency: 1,
+  location: 1, merchant: 1, device: 1, fraud_indicators: 1, fraud_score: 1, timestamp: 1,
+};
+
 const searchFraudCasesTool = tool(
-  async ({ query_text, k = 5 }) => {
+  async ({ query_text, k = 5, mode = 'hybrid' }) => {
     const client = new MongoClient(config.atlas.connectionString);
     try {
       await client.connect();
-      const results = await client
-        .db(config.atlas.database)
-        .collection('fraud_transactions')
-        .aggregate([
+
+      let pipeline;
+
+      if (mode === 'lexical') {
+        pipeline = [
+          {
+            $search: {
+              index: 'fraud_transactions_lexical',
+              text: { query: query_text, path: LEXICAL_PATHS },
+            },
+          },
+          { $limit: k },
+          { $project: { ...RESULT_PROJECTION, score: { $meta: 'searchScore' } } },
+        ];
+      } else if (mode === 'hybrid') {
+        pipeline = [
+          {
+            $rankFusion: {
+              input: {
+                pipelines: {
+                  vectorPipeline: [
+                    {
+                      $vectorSearch: {
+                        index: 'fraud_transactions_text_index',
+                        path: 'text',
+                        query: query_text,
+                        numCandidates: k * 10,
+                        limit: k * 4,
+                        model: 'voyage-4',
+                      },
+                    },
+                  ],
+                  lexicalPipeline: [
+                    {
+                      $search: {
+                        index: 'fraud_transactions_lexical',
+                        text: { query: query_text, path: LEXICAL_PATHS },
+                      },
+                    },
+                    { $limit: k * 4 },
+                  ],
+                },
+              },
+              combination: {
+                weights: { vectorPipeline: 0.6, lexicalPipeline: 0.4 },
+              },
+            },
+          },
+          { $limit: k },
+          { $project: RESULT_PROJECTION },
+        ];
+      } else {
+        // vector
+        pipeline = [
           {
             $vectorSearch: {
               index: 'fraud_transactions_text_index',
@@ -34,25 +96,17 @@ const searchFraudCasesTool = tool(
               model: 'voyage-4',
             },
           },
-          {
-            $project: {
-              _id: 0,
-              transaction_id: 1,
-              user_id: 1,
-              amount: 1,
-              currency: 1,
-              location: 1,
-              merchant: 1,
-              device: 1,
-              fraud_indicators: 1,
-              fraud_score: 1,
-              timestamp: 1,
-              score: { $meta: 'vectorSearchScore' },
-            },
-          },
-        ])
+          { $project: { ...RESULT_PROJECTION, score: { $meta: 'vectorSearchScore' } } },
+        ];
+      }
+
+      const results = await client
+        .db(config.atlas.database)
+        .collection('fraud_transactions')
+        .aggregate(pipeline)
         .toArray();
-      return JSON.stringify({ count: results.length, results });
+
+      return JSON.stringify({ mode, count: results.length, results });
     } finally {
       await client.close();
     }
@@ -60,10 +114,15 @@ const searchFraudCasesTool = tool(
   {
     name: 'search_fraud_cases',
     description:
-      'Semantic search over fraud_transactions using natural language. Use for questions like "show fraud cases involving new devices" or "find high-amount transactions in West Africa".',
+      'Search fraud_transactions using vector (semantic), lexical (BM25 keyword), or hybrid (RRF combination) search. ' +
+      'Use lexical when the query contains specific terms like merchant names, countries, or device types. ' +
+      'Use vector for pattern or concept queries. Use hybrid for best overall recall.',
     schema: z.object({
       query_text: z.string().describe('Natural language description of the fraud pattern to search for'),
       k: z.number().int().min(1).max(20).optional().describe('Number of results (default 5)'),
+      mode: z.enum(['vector', 'lexical', 'hybrid']).optional().describe(
+        'Search mode: vector (semantic similarity), lexical (BM25 keyword match), or hybrid (both via RRF). Uses the user-selected mode by default.'
+      ),
     }),
   }
 );
@@ -195,20 +254,25 @@ function extractText(content) {
 }
 
 function statusLabel(toolName, args) {
-  if (toolName === 'search_fraud_cases') return `Searching: "${args.query_text}"`;
+  if (toolName === 'search_fraud_cases') {
+    const modeLabel = { vector: 'Vector', lexical: 'Lexical', hybrid: 'Hybrid' }[args.mode ?? 'hybrid'];
+    return `${modeLabel} search: "${args.query_text}"`;
+  }
   if (toolName === 'run_aggregation') return `Aggregating ${args.collection}`;
   if (toolName === 'get_user_risk_profile') return `Looking up ${args.user_id}`;
   return `Running ${toolName}`;
 }
 
-async function* runFraudAnalyst(userMessage, conversationHistory = []) {
+async function* runFraudAnalyst(userMessage, conversationHistory = [], searchMode = 'hybrid') {
   const model = new ChatAnthropic({
-    model: 'claude-opus-4-8',
+    model: 'claude-sonnet-4-6',
     thinking: { type: 'adaptive' },
   }).bindTools(TOOLS);
 
+  const modeInstruction = `\n\nSearch mode preference: when calling search_fraud_cases, use mode: "${searchMode}" unless the user explicitly requests a different mode.`;
+
   const messages = [
-    new SystemMessage(SYSTEM_PROMPT),
+    new SystemMessage(SYSTEM_PROMPT + modeInstruction),
     ...conversationHistory.map((m) =>
       m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content)
     ),
@@ -240,3 +304,4 @@ async function* runFraudAnalyst(userMessage, conversationHistory = []) {
 }
 
 module.exports = { runFraudAnalyst };
+// Search modes: 'vector' | 'lexical' | 'hybrid'

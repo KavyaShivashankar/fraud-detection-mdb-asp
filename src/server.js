@@ -12,11 +12,14 @@ app.use(express.json());
 
 // API routes must be registered before express.static so they are matched first
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [] } = req.body;
+  const { message, history = [], searchMode = 'hybrid' } = req.body;
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'message is required' });
   }
+
+  const validModes = ['vector', 'lexical', 'hybrid'];
+  const resolvedMode = validModes.includes(searchMode) ? searchMode : 'hybrid';
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -26,7 +29,7 @@ app.post('/api/chat', async (req, res) => {
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
-    for await (const event of runFraudAnalyst(message, history)) {
+    for await (const event of runFraudAnalyst(message, history, resolvedMode)) {
       send(event);
       if (event.type === 'done') break;
     }

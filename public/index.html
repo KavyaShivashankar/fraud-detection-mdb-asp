@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fraud Detection &amp; Agent · MongoDB</title>
+  <title>Fraud Detection &amp; Agent Demo · MongoDB</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -51,6 +51,7 @@
       gap: 12px;
       flex-shrink: 0;
       box-shadow: var(--shadow-md);
+      position: relative;
     }
     .logo {
       width: 28px;
@@ -312,6 +313,39 @@
     #send:disabled { background: var(--grey-200); cursor: not-allowed; }
     #send svg { color: var(--white); }
 
+    /* ── Search mode toggle ── */
+    .search-mode-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 900px;
+      margin: 0 auto 10px;
+    }
+    .search-mode-label {
+      font-size: 11px;
+      color: var(--grey-400);
+      font-weight: 500;
+      letter-spacing: .3px;
+      margin-right: 2px;
+    }
+    .mode-btn {
+      padding: 3px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--grey-200);
+      background: var(--white);
+      color: var(--grey-400);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .mode-btn:hover { border-color: var(--green-mid); color: var(--green-dark); }
+    .mode-btn.active {
+      background: var(--green-dark);
+      border-color: var(--green-dark);
+      color: var(--white);
+    }
+
     /* ── Error toast ── */
     .error-pill {
       background: #FEF2F2;
@@ -349,11 +383,12 @@
 
 <header>
   <div class="logo">🔍</div>
-  <h1>Fraud Detection &amp; Agent</h1>
-  <nav style="margin-left:auto;display:flex;gap:4px">
+  <h1>Fraud Detection &amp; Agent Demo</h1>
+  <span style="position:absolute;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.9);font-size:19px;font-weight:500;letter-spacing:.5px">Powered by MongoDB</span>
+  <nav style="margin-left:auto;display:flex;gap:16px">
     <a href="/simulate.html" style="color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px">Transaction Simulator</a>
-    <a href="/investigate.html" style="color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px">Investigator</a>
-    <a href="/" style="color:rgba(255,255,255,.9);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px;background:rgba(255,255,255,.15);font-weight:500">Analyst Chat</a>
+    <a href="/investigate.html" style="color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px">Fraud Investigator (Agent)</a>
+    <a href="/" style="color:rgba(255,255,255,.9);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px;background:rgba(255,255,255,.15);font-weight:500">Interactive Analyst (Chatbot)</a>
   </nav>
 </header>
 
@@ -386,6 +421,12 @@
 <button id="scroll-btn" onclick="scrollToBottom()" title="Scroll to bottom">↓</button>
 
 <div id="input-area">
+  <div class="search-mode-row">
+    <span class="search-mode-label">Search</span>
+    <button class="mode-btn active" data-mode="hybrid"  onclick="setMode('hybrid')">Hybrid</button>
+    <button class="mode-btn"        data-mode="vector"  onclick="setMode('vector')">Vector</button>
+    <button class="mode-btn"        data-mode="lexical" onclick="setMode('lexical')">Lexical</button>
+  </div>
   <div class="input-inner">
     <textarea id="msg" rows="1" placeholder="Ask anything about fraud patterns, users, or transactions…"></textarea>
     <button id="send" onclick="sendMessage()" title="Send">
@@ -419,6 +460,14 @@
   // ── State ────────────────────────────────────────────────────────────────
   const history = [];   // [{role, content}]
   let busy = false;
+  let searchMode = 'hybrid';
+
+  function setMode(mode) {
+    searchMode = mode;
+    document.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+  }
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
   const chat    = document.getElementById('chat');
@@ -495,8 +544,11 @@
   }
 
   function addToolPill(toolsDiv, label) {
-    const icon = TOOL_ICONS[label.split(':')[0].trim()] ?? '⚙️';
-    // statusLabel format is e.g. "Searching: \"...\""
+    const lower = label.toLowerCase();
+    const icon = lower.includes('search')      ? '🔍'
+               : lower.includes('aggregat')    ? '📊'
+               : lower.includes('looking up')  ? '👤'
+               : '⚙️';
     const pill = document.createElement('div');
     pill.className = 'tool-pill';
     pill.innerHTML = `<div class="dot"></div>${icon} ${escHtml(label)}`;
@@ -536,7 +588,7 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, history, searchMode }),
       });
 
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -560,11 +612,6 @@
           try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (event.type === 'status') {
-            // Map tool name from statusLabel back to pill display
-            const toolName = event.text.startsWith('Searching')     ? 'search_fraud_cases'
-                           : event.text.startsWith('Aggregating')   ? 'run_aggregation'
-                           : event.text.startsWith('Looking up')    ? 'get_user_risk_profile'
-                           : 'tool';
             addToolPill(toolsDiv, event.text);
             showThinking(contentDiv);
           } else if (event.type === 'token') {

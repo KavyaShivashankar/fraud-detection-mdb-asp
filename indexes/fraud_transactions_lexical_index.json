@@ -1,0 +1,32 @@
+{
+  "name": "fraud_transactions_lexical",
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "text":              [{ "type": "string" }],
+      "fraud_indicators":  [{ "type": "string" }],
+      "merchant": {
+        "type": "document",
+        "fields": {
+          "merchant_name":     [{ "type": "string" }],
+          "merchant_category": [{ "type": "string" }],
+          "merchant_country":  [{ "type": "string" }]
+        }
+      },
+      "location": {
+        "type": "document",
+        "fields": {
+          "country": [{ "type": "string" }],
+          "city":    [{ "type": "string" }]
+        }
+      },
+      "device": {
+        "type": "document",
+        "fields": {
+          "device_type": [{ "type": "string" }],
+          "os":          [{ "type": "string" }]
+        }
+      }
+    }
+  }
+}
