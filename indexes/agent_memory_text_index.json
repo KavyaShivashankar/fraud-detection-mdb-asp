@@ -1,0 +1,10 @@
+{
+  "fields": [
+    {
+      "modality": "text",
+      "model": "voyage-4",
+      "path": "summary",
+      "type": "autoEmbed"
+    }
+  ]
+}

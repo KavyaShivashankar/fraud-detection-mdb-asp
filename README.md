@@ -230,7 +230,7 @@ node scripts/deploy-asp.js
 ### Run the Web Demo
 
 ```bash
-npm run chat
+npm run fraud_ai_agent
 ```
 
 Opens the full web UI at `http://localhost:3000`. All three pages are served from here.
@@ -283,7 +283,7 @@ Runs the terminal version of the investigation agent against a specific transact
 
 | Script | Command | What it does |
 |---|---|---|
-| `npm run chat` | `node src/server.js` | Start the web demo on port 3000 |
+| `npm run fraud_ai_agent` | `node src/server.js` | Start the web demo on port 3000 |
 | `npm run investigate <id>` | `node src/agents/fraud-investigation-agent.js` | CLI agent for a single transaction |
 | `npm run generate-data` | `node scripts/generate-sample-data.js` | Seed the database with sample data |
 | `npm start` | `node src/index.js` | Legacy monitoring process |

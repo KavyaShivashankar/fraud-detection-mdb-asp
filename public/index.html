@@ -385,10 +385,14 @@
   <div class="logo">🔍</div>
   <h1>Fraud Detection &amp; Agent Demo</h1>
   <span style="position:absolute;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.9);font-size:19px;font-weight:500;letter-spacing:.5px">Powered by MongoDB</span>
-  <nav style="margin-left:auto;display:flex;gap:16px">
+  <nav style="margin-left:auto;display:flex;gap:16px;align-items:center">
     <a href="/simulate.html" style="color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px">Transaction Simulator</a>
     <a href="/investigate.html" style="color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px">Fraud Investigator (Agent)</a>
     <a href="/" style="color:rgba(255,255,255,.9);text-decoration:none;font-size:13px;padding:5px 12px;border-radius:6px;background:rgba(255,255,255,.15);font-weight:500">Interactive Analyst (Chatbot)</a>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:16px;border-left:1px solid rgba(255,255,255,.2);font-size:12px;color:rgba(255,255,255,.75)">
+      <span id="analyst-name"></span>
+      <button onclick="logoutAnalyst()" title="Log out" style="background:none;border:none;color:rgba(255,255,255,.55);cursor:pointer;font-size:13px;padding:2px 4px">⏻</button>
+    </div>
   </nav>
 </header>
 
@@ -458,9 +462,24 @@
   });
 
   // ── State ────────────────────────────────────────────────────────────────
-  const history = [];   // [{role, content}]
+  // Conversation history lives server-side in MongoDB, keyed by the logged-in
+  // analyst (see /api/me and /api/chat) — no client-side session id needed.
   let busy = false;
   let searchMode = 'hybrid';
+
+  async function loadAnalyst() {
+    try {
+      const r = await fetch('/api/me');
+      if (r.status === 401) return (location.href = '/login.html');
+      const { name } = await r.json();
+      document.getElementById('analyst-name').textContent = name;
+    } catch {}
+  }
+  async function logoutAnalyst() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/login.html';
+  }
+  loadAnalyst();
 
   function setMode(mode) {
     searchMode = mode;
@@ -545,7 +564,8 @@
 
   function addToolPill(toolsDiv, label) {
     const lower = label.toLowerCase();
-    const icon = lower.includes('search')      ? '🔍'
+    const icon = lower.includes('recalling')   ? '🧠'
+               : lower.includes('search')      ? '🔍'
                : lower.includes('aggregat')    ? '📊'
                : lower.includes('looking up')  ? '👤'
                : '⚙️';
@@ -588,9 +608,10 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, searchMode }),
+        body: JSON.stringify({ message: text, searchMode }),
       });
 
+      if (res.status === 401) return (location.href = '/login.html');
       if (!res.ok) throw new Error(`Server error ${res.status}`);
 
       const reader = res.body.getReader();
@@ -624,10 +645,6 @@
           }
         }
       }
-
-      // Persist to history
-      history.push({ role: 'user', content: text });
-      history.push({ role: 'assistant', content: assistantText });
 
     } catch (err) {
       showError(contentDiv, err.message);

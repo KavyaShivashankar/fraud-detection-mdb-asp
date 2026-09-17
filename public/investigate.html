@@ -302,6 +302,51 @@
     .routing-badge.human    { background: var(--red-bg);  border: 1px solid var(--red-border); color: var(--red); }
     .routing-badge.auto     { background: var(--green-bg); border: 1px solid #B3DFC8;           color: var(--green-dark); }
     .routing-badge.pending  { background: var(--amber-bg); border: 1px solid #FDE68A;           color: var(--amber); }
+
+    /* Analyst feedback */
+    .feedback-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .feedback-label { font-size: 12px; color: var(--grey-600); }
+    .feedback-btn {
+      border: 1px solid var(--grey-200);
+      background: var(--white);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+    .feedback-btn.confirm:hover:not(:disabled) { border-color: var(--red);  color: var(--red); }
+    .feedback-btn.reject:hover:not(:disabled)  { border-color: var(--green-dark); color: var(--green-dark); }
+    .feedback-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .feedback-recorded { font-size: 12px; color: var(--grey-600); }
+
+    /* Analyst identity badge */
+    .analyst-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 8px;
+      padding-left: 16px;
+      border-left: 1px solid rgba(255,255,255,.2);
+      font-size: 12px;
+      color: rgba(255,255,255,.75);
+    }
+    .analyst-badge button {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.55);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+      transition: color .15s;
+    }
+    .analyst-badge button:hover { color: white; }
   </style>
 </head>
 <body>
@@ -314,6 +359,10 @@
     <a href="/simulate.html">Transaction Simulator</a>
     <a href="/investigate.html" class="active">Fraud Investigator (Agent)</a>
     <a href="/">Interactive Analyst (Chatbot)</a>
+    <div class="analyst-badge" id="analyst-badge">
+      <span id="analyst-name"></span>
+      <button onclick="logoutAnalyst()" title="Log out">⏻</button>
+    </div>
   </nav>
 </header>
 
@@ -366,10 +415,26 @@
   let selectedCase = null;
   let busy = false;
 
+  // ── Analyst identity ─────────────────────────────────────────────────────
+  async function loadAnalyst() {
+    try {
+      const r = await fetch('/api/me');
+      if (r.status === 401) return (location.href = '/login.html');
+      const { name } = await r.json();
+      document.getElementById('analyst-name').textContent = name;
+    } catch {}
+  }
+  async function logoutAnalyst() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/login.html';
+  }
+  loadAnalyst();
+
   const STEP_META = {
     fetch_fraud_transaction:    { icon: '📋', label: 'Fetch fraud transaction' },
     fetch_user_history:         { icon: '👤', label: 'Retrieve user history' },
     search_similar_fraud_cases: { icon: '🔍', label: 'Search similar fraud cases' },
+    search_agent_memory:        { icon: '🧠', label: 'Search past investigation findings' },
     write_investigation_findings:{ icon: '✍️', label: 'Write investigation findings' },
   };
 
@@ -513,10 +578,22 @@
           ['Top similarity', top != null ? top.toFixed(3) : '—'],
         ]);
       }
+      if (tool === 'search_agent_memory') {
+        const verified = (result.memories ?? []).filter(m => m.source === 'human_confirmed').length;
+        return kv([
+          ['Memories found', result.memories?.length ?? 0],
+          ['Human-confirmed', verified],
+        ]);
+      }
       if (tool === 'write_investigation_findings') {
         const routed = result.route_to_human;
         return `<div class="routing-badge ${routed ? 'human' : 'auto'}">
           ${routed ? '🔴 Routed to human review' : '✅ Handled automatically'}
+        </div>
+        <div class="feedback-row" id="feedback-row">
+          <span class="feedback-label">Was this correct?</span>
+          <button class="feedback-btn confirm" onclick="submitFeedback('confirmed_fraud', this)">✓ Confirm fraud</button>
+          <button class="feedback-btn reject" onclick="submitFeedback('false_positive', this)">✗ False positive</button>
         </div>`;
       }
       return '';
@@ -534,6 +611,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transaction_id: selectedCase.transaction_id }),
       });
+      if (res.status === 401) return (location.href = '/login.html');
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -586,6 +664,29 @@
 
     busy = false;
     btn.disabled = false;
+  }
+
+  // ── Analyst feedback ─────────────────────────────────────────────────────
+  async function submitFeedback(outcome, btnEl) {
+    if (!selectedCase) return;
+    const row = document.getElementById('feedback-row');
+    row.querySelectorAll('button').forEach(b => b.disabled = true);
+
+    try {
+      const res = await fetch(`/api/fraud-transactions/${encodeURIComponent(selectedCase.transaction_id)}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
+
+      row.innerHTML = `<span class="feedback-recorded">
+        ${outcome === 'confirmed_fraud' ? '🔴 Recorded: confirmed fraud' : '✅ Recorded: false positive'}
+      </span>`;
+    } catch (e) {
+      row.querySelectorAll('button').forEach(b => b.disabled = false);
+      alert(`Failed to record feedback: ${e.message}`);
+    }
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────

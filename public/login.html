@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · Fraud Detection &amp; Agent Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green-dark: #00684A;
+      --green-mid:  #00A35C;
+      --green-bg:   #E8F5EE;
+      --grey-100:   #F3F4F6;
+      --grey-200:   #E5E7EB;
+      --grey-400:   #9CA3AF;
+      --grey-600:   #4B5563;
+      --grey-900:   #111827;
+      --white:      #FFFFFF;
+      --red:        #DC2626;
+      --red-bg:     #FEF2F2;
+      --radius:     12px;
+      --shadow-md:  0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06);
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--grey-100);
+      color: var(--grey-900);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-md);
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .logo { font-size: 22px; }
+    .logo-row h1 { font-size: 16px; font-weight: 600; }
+    .subtitle { font-size: 12.5px; color: var(--grey-400); margin-bottom: 24px; }
+    label { display: block; font-size: 12px; font-weight: 500; color: var(--grey-600); margin-bottom: 5px; }
+    input {
+      width: 100%;
+      border: 1.5px solid var(--grey-200);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .15s;
+      margin-bottom: 16px;
+    }
+    input:focus { border-color: var(--green-mid); }
+    .hint { font-size: 11px; color: var(--grey-400); margin: -12px 0 16px; }
+    button {
+      width: 100%;
+      background: var(--green-dark);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 11px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    button:hover:not(:disabled) { background: var(--green-mid); }
+    button:disabled { background: var(--grey-200); color: var(--grey-400); cursor: not-allowed; }
+    .error {
+      background: var(--red-bg);
+      color: var(--red);
+      font-size: 12.5px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .note {
+      margin-top: 18px;
+      font-size: 11.5px;
+      color: var(--grey-400);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo-row">
+    <div class="logo">🔍</div>
+    <h1>Fraud Detection &amp; Agent Demo</h1>
+  </div>
+  <div class="subtitle">Powered by MongoDB</div>
+
+  <div class="error" id="error"></div>
+
+  <form id="login-form">
+    <label for="name">Name</label>
+    <input id="name" type="text" placeholder="Jane Analyst" autocomplete="name" required />
+
+    <label for="email">Email <span style="font-weight:400;color:var(--grey-400)">(optional)</span></label>
+    <input id="email" type="email" placeholder="jane@example.com" autocomplete="email" />
+    <div class="hint">Used to keep your name consistent across visits — not verified.</div>
+
+    <button id="submit-btn" type="submit">Continue</button>
+  </form>
+
+  <div class="note">This identifies you as the analyst behind chat sessions and case reviews — it isn't a password and doesn't restrict access.</div>
+</div>
+
+<script>
+  const form = document.getElementById('login-form');
+  const errorEl = document.getElementById('error');
+  const btn = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      const params = new URLSearchParams(location.search);
+      location.href = params.get('next') || '/';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Continue';
+    }
+  });
+</script>
+</body>
+</html>
