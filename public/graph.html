@@ -451,7 +451,7 @@
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "HTTP " + res.status);
       const isFraud = outcome === "confirmed_fraud";
-      btns.innerHTML = "<span class="gfeedback-recorded">" + (isFraud ? "🔴 Analyst confirmed: fraud" : "✅ Analyst confirmed: false positive") + " · 🧠 Learning…</span>";
+      btns.innerHTML = '<span class="gfeedback-recorded">' + (isFraud ? '🔴 Analyst confirmed: fraud' : '✅ Analyst confirmed: false positive') + ' · 🧠 Learning…</span>';
       document.getElementById("learning-indicator").style.display = "";
       setNodeState("human_review", "done", "REVIEWED");
     } catch (e) {
