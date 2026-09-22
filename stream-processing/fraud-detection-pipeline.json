@@ -217,18 +217,18 @@
   {
     "$addFields": {
       "is_fraudulent": {
-        "$gte": ["$fraud_score", 70]
+        "$gte": ["$fraud_score", 20]
       },
       "status": {
         "$cond": [
-          { "$gte": ["$fraud_score", 70] },
+          { "$gte": ["$fraud_score", 20] },
           "flagged",
           "completed"
         ]
       },
       "fraud_alert": {
         "$cond": [
-          { "$gte": ["$fraud_score", 70] },
+          { "$gte": ["$fraud_score", 20] },
           {
             "is_fraudulent": true,
             "processed_transaction_id": "$_id"
