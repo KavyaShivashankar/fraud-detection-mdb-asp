@@ -241,6 +241,7 @@ async function generateSampleData() {
     // Create indexes
     console.log('\nCreating indexes...');
 
+    await transactionsCollection.createIndex({ transaction_id: 1 }, { unique: true });
     await transactionsCollection.createIndex({ user_id: 1, timestamp: -1 });
     await transactionsCollection.createIndex({ status: 1 });
     await transactionsCollection.createIndex({ timestamp: -1 });
@@ -248,6 +249,9 @@ async function generateSampleData() {
 
     await usersCollection.createIndex({ user_id: 1 }, { unique: true });
     await usersCollection.createIndex({ email: 1 }, { unique: true });
+
+    const fraudTxnCollection = db.collection('fraud_transactions');
+    await fraudTxnCollection.createIndex({ transaction_id: 1 }, { unique: true });
 
     console.log('✓ Indexes created');
 
