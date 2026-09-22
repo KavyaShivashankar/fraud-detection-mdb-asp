@@ -448,25 +448,38 @@
           if (inv.investigated_at) renderExistingGraph(inv);
         }
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "HTTP " + res.status);
-      const isFraud = outcome === "confirmed_fraud";
+    } catch (e) { setProgress(100, 'Error: ' + e.message); btn.textContent = '↺ Retry'; }
+    busy = false; btn.disabled = false;
+  }
+
+  async function submitFeedback(outcome, btnEl) {
+    if (!selectedCase) return;
+    const btns = document.getElementById('gfeedback-btns');
+    btns.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
+    try {
+      var res = await fetch('/api/fraud-transactions/' + encodeURIComponent(selectedCase.transaction_id) + '/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: outcome }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'HTTP ' + res.status);
+      var isFraud = outcome === 'confirmed_fraud';
       btns.innerHTML = '<span class="gfeedback-recorded">' + (isFraud ? '🔴 Analyst confirmed: fraud' : '✅ Analyst confirmed: false positive') + ' · 🧠 Learning…</span>';
-      document.getElementById("learning-indicator").style.display = "";
-      setNodeState("human_review", "done", "REVIEWED");
-      setNodeState("human_review", "done", "REVIEWED");
-      // Refresh case list and re-render graph with updated data
-      loadCases().then(() => {
-        const i = window._cases?.findIndex(c => c.transaction_id === selectedCase.transaction_id);
+      document.getElementById('learning-indicator').style.display = '';
+      setNodeState('human_review', 'done', 'REVIEWED');
+      loadCases().then(function() {
+        var i = window._cases ? window._cases.findIndex(function(c) { return c.transaction_id === selectedCase.transaction_id; }) : -1;
         if (i >= 0) {
-          document.getElementById('case-' + i)?.classList.add('selected');
+          var caseEl = document.getElementById('case-' + i);
+          if (caseEl) caseEl.classList.add('selected');
           selectedCase = window._cases[i];
-          const inv = selectedCase.investigation ?? {};
+          var inv = selectedCase.investigation || {};
           if (inv.investigated_at) renderExistingGraph(inv);
         }
       });
     } catch (e) {
-      btns.querySelectorAll("button").forEach(b => b.disabled = false);
-      alert("Failed to record feedback: " + e.message);
+      btns.querySelectorAll('button').forEach(function(b) { b.disabled = false; });
+      alert('Failed to record feedback: ' + e.message);
     }
   }
 
