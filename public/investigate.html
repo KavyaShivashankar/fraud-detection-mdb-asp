@@ -326,6 +326,72 @@
     .feedback-btn:disabled { opacity: .5; cursor: not-allowed; }
     .feedback-recorded { font-size: 12px; color: var(--grey-600); }
 
+    /* Precedent brief card */
+    .brief-card {
+      background: var(--white);
+      border: 1px solid var(--grey-200);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .brief-card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--grey-200);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--grey-400);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      background: var(--grey-50);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .brief-body {
+      padding: 14px 16px;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--grey-700);
+      white-space: pre-wrap;
+      font-family: 'Fira Mono', monospace;
+    }
+    .brief-body .brief-empty { color: var(--grey-400); font-style: italic; }
+
+    /* Decision panel */
+    .decision-card {
+      background: var(--white);
+      border: 1px solid var(--grey-200);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .decision-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--grey-200);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--grey-400);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      background: var(--grey-50);
+    }
+    .decision-body { padding: 16px; }
+    .confidence-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+    .confidence-badge.high   { background: #DCFCE7; color: #166534; }
+    .confidence-badge.medium { background: #FEF3C7; color: #92400E; }
+    .confidence-badge.low    { background: #FEE2E2; color: #991B1B; }
+    .decision-rationale {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--grey-700);
+      line-height: 1.6;
+    }
+
     /* Analyst identity badge */
     .analyst-badge {
       display: flex;
@@ -353,8 +419,7 @@
 
 <header>
   <div class="logo">🔎</div>
-  <h1>Fraud Detection &amp; Agent Demo</h1>
-  <span style="position:absolute;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.9);font-size:19px;font-weight:500;letter-spacing:.5px">Powered by MongoDB</span>
+  <h1>Fraud Detection &amp; Agent Demo <span style="color:rgba(255,255,255,.6);font-size:14px;font-weight:400">— Powered by MongoDB</span></h1>
   <nav>
     <a href="/simulate.html">Transaction Simulator</a>
     <a href="/investigate.html" class="active">Fraud Investigator (Agent)</a>
@@ -431,11 +496,13 @@
   loadAnalyst();
 
   const STEP_META = {
-    fetch_fraud_transaction:    { icon: '📋', label: 'Fetch fraud transaction' },
-    fetch_user_history:         { icon: '👤', label: 'Retrieve user history' },
-    search_similar_fraud_cases: { icon: '🔍', label: 'Search similar fraud cases' },
-    search_agent_memory:        { icon: '🧠', label: 'Search past investigation findings' },
-    write_investigation_findings:{ icon: '✍️', label: 'Write investigation findings' },
+    memory_retrieval:              { icon: '🧠', label: 'Precedent brief retrieval' },
+    fetch_fraud_transaction:       { icon: '📋', label: 'Fetch fraud transaction' },
+    fetch_user_history:            { icon: '👤', label: 'Retrieve user history' },
+    search_similar_fraud_cases:    { icon: '🔍', label: 'Search similar fraud cases' },
+    submit_investigation_findings:  { icon: '📝', label: 'Submit investigation findings' },
+    investigation_complete:         { icon: '🔎', label: 'Investigation complete' },
+    decision:                       { icon: '⚖️', label: 'Decision agent' },
   };
 
   // ── Load case list ────────────────────────────────────────────────────────
@@ -506,6 +573,72 @@
     document.getElementById('report-container').innerHTML = '';
     document.getElementById('run-btn').disabled = false;
     document.getElementById('run-btn').textContent = '▶ Run Investigation';
+
+    // If this case was already investigated, show the investigation results
+    // and feedback buttons immediately — not just during a live SSE stream.
+    const inv = selectedCase.investigation ?? {};
+    if (inv.investigated_at) {
+      renderExistingInvestigation(selectedCase, inv);
+    }
+  }
+
+  // ── Render existing investigation results ─────────────────────────────────
+  function renderExistingInvestigation(caseData, inv) {
+    const stepsEl = document.getElementById('steps');
+    const reportEl = document.getElementById('report-container');
+
+    // Decision summary
+    const decisionDiv = document.createElement('div');
+    decisionDiv.className = 'step';
+    decisionDiv.innerHTML = `
+      <div class="step-icon done">✓</div>
+      <div class="step-content">
+        <div class="step-label done">Investigation Results</div>
+        <div class="step-summary">
+          <div class="kv"><div class="k">Confidence</div><div class="v">${inv.confidence ?? '—'}</div></div>
+          <div class="kv"><div class="k">Recommendation</div><div class="v">${inv.recommendation ?? '—'}</div></div>
+          <div class="kv"><div class="k">Investigated</div><div class="v">${inv.investigated_at ? new Date(inv.investigated_at).toLocaleString() : '—'}</div></div>
+        </div>
+        <div class="routing-badge ${inv.routed_to_human ? 'human' : 'auto'}" style="margin-top:8px">
+          ${inv.routed_to_human ? '🔴 Routed to human review' : '✅ Handled automatically'}
+        </div>
+        ${inv.decision_rationale ? `
+        <div class="decision-card" style="margin-top:8px">
+          <div class="decision-header">Decision Rationale</div>
+          <div class="decision-body">
+            <div class="decision-rationale">${escapeHtml(inv.decision_rationale)}</div>
+          </div>
+        </div>` : ''}
+        ${inv.notes?.length ? `
+        <div class="report-card" style="margin-top:8px">
+          <div class="report-card-header">Investigation Notes</div>
+          <div class="report-body">${marked.parse(inv.notes.map(n => `- ${n}`).join('\n'))}</div>
+        </div>` : ''}
+        ${renderFeedbackSection(inv)}
+      </div>
+    `;
+    stepsEl.appendChild(decisionDiv);
+  }
+
+  // ── Render feedback section (buttons or recorded verdict) ─────────────────
+  function renderFeedbackSection(inv) {
+    if (inv.human_outcome) {
+      // Feedback already recorded
+      const isFraud = inv.human_outcome === 'confirmed_fraud';
+      return `<div class="feedback-row" id="feedback-row">
+        <span class="feedback-recorded">
+          ${isFraud ? '🔴 Analyst confirmed: fraud' : '✅ Analyst confirmed: false positive'}
+          ${inv.human_reviewed_at ? ` · ${new Date(inv.human_reviewed_at).toLocaleString()}` : ''}
+          ${inv.human_notes ? ` · "${escapeHtml(inv.human_notes)}"` : ''}
+        </span>
+      </div>`;
+    }
+    // No feedback yet — show buttons
+    return `<div class="feedback-row" id="feedback-row">
+      <span class="feedback-label">Was this correct?</span>
+      <button class="feedback-btn confirm" onclick="submitFeedback('confirmed_fraud', this)">✓ Confirm fraud</button>
+      <button class="feedback-btn reject" onclick="submitFeedback('false_positive', this)">✗ False positive</button>
+    </div>`;
   }
 
   // ── Run investigation ─────────────────────────────────────────────────────
@@ -555,11 +688,23 @@
     }
 
     function buildSummary(tool, result) {
+      if (tool === 'memory_retrieval') {
+        const indicators = result.indicators ?? [];
+        const brief = result.brief ?? '';
+        const hasContent = brief.trim().length > 0 && !brief.includes('PRECEDENT BRIEF\nIndicators: []\n\n');
+        return `<div class="step-summary">
+          <div class="kv"><div class="k">Indicators</div><div class="v">${indicators.join(', ') || '—'}</div></div>
+        </div>
+        ${hasContent ? `<div class="brief-card" style="margin-top:8px">
+          <div class="brief-card-header">🧠 Precedent Brief</div>
+          <div class="brief-body">${escapeHtml(brief)}</div>
+        </div>` : ''}`;
+      }
       if (tool === 'fetch_fraud_transaction') {
         const t = result.fraud_transaction ?? {};
         return kv([
           ['Score', t.fraud_score],
-          ['Amount', `${t.currency} ${Number(t.amount ?? 0).toLocaleString()}`],
+          ['Amount', `${t.currency ?? ''} ${Number(t.amount ?? 0).toLocaleString()}`],
           ['Indicators', (t.fraud_indicators ?? []).join(', ') || '—'],
           ['Location', `${t.location?.city ?? ''}, ${t.location?.country ?? ''}`],
         ]);
@@ -578,17 +723,28 @@
           ['Top similarity', top != null ? top.toFixed(3) : '—'],
         ]);
       }
-      if (tool === 'search_agent_memory') {
-        const verified = (result.memories ?? []).filter(m => m.source === 'human_confirmed').length;
+      if (tool === 'submit_investigation_findings') {
         return kv([
-          ['Memories found', result.memories?.length ?? 0],
-          ['Human-confirmed', verified],
+          ['Confidence', result.confidence],
+          ['Recommendation', result.recommendation],
         ]);
       }
-      if (tool === 'write_investigation_findings') {
+      if (tool === 'investigation_complete') {
+        return kv([
+          ['Confidence', result.confidence],
+          ['Recommendation', result.recommendation],
+        ]);
+      }
+      if (tool === 'decision') {
         const routed = result.route_to_human;
         return `<div class="routing-badge ${routed ? 'human' : 'auto'}">
           ${routed ? '🔴 Routed to human review' : '✅ Handled automatically'}
+        </div>
+        <div class="decision-card" style="margin-top:8px">
+          <div class="decision-header">Decision Rationale</div>
+          <div class="decision-body">
+            <div class="decision-rationale">${escapeHtml(result.rationale ?? '')}</div>
+          </div>
         </div>
         <div class="feedback-row" id="feedback-row">
           <span class="feedback-label">Was this correct?</span>
@@ -603,6 +759,12 @@
       return `<div class="step-summary">${pairs.map(([k, v]) =>
         `<div class="kv"><div class="k">${k}</div><div class="v">${v ?? '—'}</div></div>`
       ).join('')}</div>`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
     }
 
     try {
@@ -682,6 +844,7 @@
 
       row.innerHTML = `<span class="feedback-recorded">
         ${outcome === 'confirmed_fraud' ? '🔴 Recorded: confirmed fraud' : '✅ Recorded: false positive'}
+        · 🧠 Learning…
       </span>`;
     } catch (e) {
       row.querySelectorAll('button').forEach(b => b.disabled = false);

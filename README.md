@@ -1,147 +1,226 @@
-# Fraud Detection & Agent Demo — Powered by MongoDB
+# Fraud Detection & Multi-Agent Learning Loop — Powered by MongoDB Atlas
 
-A demoable end-to-end fraud detection system built on MongoDB Atlas. Combines real-time stream processing, AI agents with tool-calling, and Atlas Vector Search in a single web interface designed for customer-facing demos.
+An end-to-end fraud detection system that combines real-time stream processing, a multi-agent investigation pipeline with LangGraph, and a closed-loop learning cycle that improves from human feedback. Built entirely on MongoDB Atlas capabilities — vector search, lexical search, hybrid search, stream processing, and the document model.
 
 ---
 
-## What This Demo Shows
+## What This System Does
 
-| MongoDB Capability | Where It Appears |
+| Capability | Where It Appears |
 |---|---|
-| Atlas Stream Processing | Scores incoming transactions in real time, writes flagged cases to `fraud_transactions` |
-| Atlas Vector Search (autoEmbed) | Semantic search over historical fraud cases — no client-side embedding required |
-| Atlas Search (lexical / BM25) | Keyword search over merchant names, locations, device types, and fraud indicators |
-| Hybrid Search (`$rankFusion`) | Combines vector + lexical results via Reciprocal Rank Fusion for best recall |
-| Document model | Nested fraud indicators, device metadata, and investigation notes in a single record |
-| AI agent with tool-calling | LangChain + Claude Sonnet investigates a case, writes findings back, routes to human or auto-close |
-| Natural language → MQL | Conversational analyst generates and runs live aggregation pipelines from plain English |
+| **Atlas Stream Processing** | Scores incoming transactions in real time via a continuous aggregation on a change stream |
+| **Multi-agent investigation (LangGraph)** | A 3-node state graph: precedent retrieval → investigation → decision. Code-enforced protocol, not prompt-enforced |
+| **Memory-curated learning loop** | Human analyst feedback triggers a learning cycle that synthesizes reusable lessons and writes them to long-term vector-searchable memory |
+| **Atlas Vector Search (autoEmbed)** | Semantic search over historical fraud cases and agent memory — no client-side embedding required |
+| **Atlas Search (BM25 lexical)** | Keyword search over merchant names, locations, device types, and fraud indicators |
+| **Hybrid Search (`$rankFusion`)** | Combines vector + lexical results via Reciprocal Rank Fusion (60/40 weight) |
+| **Natural language → MQL** | Conversational analyst agent generates and runs live aggregation pipelines from plain English |
+| **Trust-gradient memory** | Long-term memory distinguishes `source: "human_confirmed"` (ground truth) from `source: "agent"` (unverified reasoning) |
 
 ---
 
 ## Architecture
 
 ```
-Browser (simulate.html)
-        │
-        │  POST /api/transactions
-        ▼
-┌─────────────────────────────────────┐
-│  transactions collection (Atlas)    │  ← insert here to trigger the pipeline
-└──────────────────┬──────────────────┘
-                   │
-                   │  Atlas Stream Processing
-                   │  (continuous aggregation on change stream)
-                   ▼
-          ┌─────────────────┐
-          │  Scoring logic  │  $lookup user_profiles → evaluate 3 signals
-          │  high_amount    │  score ≥ 70 → flagged
-          │  unusual_loc    │
-          │  new_device     │
-          └────────┬────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│  fraud_transactions collection       │  ← flagged cases land here
-│  (includes autoEmbed vector field)   │
-└──────────────────────────────────────┘
-        │                    │
-        │                    │
-        ▼                    ▼
-Investigation Agent    Interactive Analyst
-(investigate.html)     (index.html)
-  4-tool LangChain       Conversational chatbot
-  agent streams          generates + runs MQL
-  findings via SSE       via SSE
+                         Browser (3 UI surfaces)
+                                │
+                 ┌──────────────┼──────────────┐
+                 │              │              │
+          simulate.html   investigate.html   index.html
+          (Simulator)      (Investigator)    (Analyst chat)
+                 │              │              │
+                 │   POST /api/transactions   │
+                 ▼              │              ▼
+    ┌────────────────────┐      │     ┌──────────────────┐
+    │ transactions       │      │     │ Fraud Analyst     │
+    │ collection         │      │     │ Chatbot (standalone│
+    └─────────┬──────────┘      │     │  4-tool agent)    │
+              │                  │     └──────────────────┘
+              │ Atlas Stream     │
+              │ Processing       │ POST /api/investigate
+              ▼                  ▼
+    ┌────────────────────┐  ┌──────────────────────────────┐
+    │ Scoring pipeline   │  │  LangGraph Investigation Graph │
+    │ $lookup user_prof  │  │                                │
+    │ 3 fraud signals    │  │  memory_retrieval              │
+    │ score ≥ 70 → flag  │  │    → buildPrecedentBrief()     │
+    └─────────┬──────────┘  │    → 2 parallel $vectorSearch  │
+              │              │    → accuracy stat aggregation │
+              ▼              │                                │
+    ┌────────────────────┐  │  investigate                   │
+    │ fraud_transactions │  │    → fetch_fraud_transaction   │
+    │ collection         │  │    → fetch_user_history        │
+    │ (autoEmbed text    │  │    → search_similar_fraud      │
+    │  + investigation   │  │    → submit_findings           │
+    │  subdocument)      │  │                                │
+    └────────────────────┘  │  decide                        │
+              │              │    → LLM decision policy       │
+              │              │    → write to fraud_txn        │
+              │              │    → write agent_memory        │
+              │              └──────────────────────────────┘
+              │
+              │  POST /api/fraud-transactions/:id/feedback
+              ▼
+    ┌──────────────────────────────────────┐
+    │  LangGraph Learning Graph (async)     │
+    │                                       │
+    │  ingest                               │
+    │    → read fraud_txn + investigation   │
+    │    → compute agent-vs-human agreement │
+    │                                       │
+    │  synthesize                           │
+    │    → LLM generates 2-4 sentence lesson│
+    │                                       │
+    │  write_lesson                         │
+    │    → buildLessonMemory()              │
+    │    → insert to agent_memory           │
+    │    → autoEmbed indexes automatically  │
+    └──────────────────────────────────────┘
 ```
 
 ---
 
-## The Three UI Surfaces
+## The Two Agent Graphs
 
-### Transaction Simulator (`/simulate.html`)
-Inject test transactions directly from the browser using preset fraud scenarios. Five presets cover common patterns: all indicators firing, unusual location only, high amount only, new device only, and a clean baseline. Each submission posts to `POST /api/transactions`, which writes to the `transactions` collection and lets Atlas Stream Processing score it.
+### Investigation Graph (`src/agents/learning/memory-graph.js`)
 
-### Fraud Investigator (`/investigate.html`)
-Displays the 30 most recent flagged cases from `fraud_transactions`. Clicking a case launches the investigation agent, which streams its reasoning steps to the browser in real time via Server-Sent Events. The agent runs four tools in sequence, writes its findings and routing decision back to the document, and renders a final markdown report.
+Three sequential nodes, code-enforced — the LLM cannot skip steps:
 
-### Interactive Analyst (`/`)
-A conversational chat interface backed by a three-tool fraud analyst agent. Ask natural language questions — the agent determines whether to run a search, generate an aggregation, or fetch a user risk profile, then streams the response token by token.
+```
+START → memory_retrieval → investigate → decide → END
+```
 
-A **search mode toggle** (Hybrid / Vector / Lexical) sits above the input bar and controls how `search_fraud_cases` retrieves results for that session:
-
-| Mode | Mechanism | Best for |
+| Node | What it does | LLM? |
 |---|---|---|
-| **Hybrid** (default) | `$rankFusion` combining vector + lexical via RRF (60/40 weight) | Best overall recall |
-| **Vector** | `$vectorSearch` with autoEmbed (voyage-4) | Conceptual / pattern queries |
-| **Lexical** | `$search` with BM25 over key fields | Exact merchant names, countries, device types |
+| `memory_retrieval` | Fetches the flagged transaction, constructs a pattern description, runs two parallel `$vectorSearch` calls on `agent_memory` (verified + all), computes an accuracy stat for the case's indicators, assembles a structured precedent brief | No — deterministic |
+| `investigate` | Claude Sonnet agent with 4 tools: `fetch_fraud_transaction`, `fetch_user_history`, `search_similar_fraud_cases`, `submit_investigation_findings`. Receives the precedent brief as input | Yes |
+| `decide` | LLM applies a decision policy (confidence + accuracy stat thresholds), writes findings + routing decision to `fraud_transactions.investigation`, writes an `investigation_summary` to `agent_memory` | Yes (1 call) |
 
----
+### Learning Graph (`src/agents/learning/memory-graph.js`)
 
-## The AI Agents
+Three sequential nodes, triggered asynchronously when a human submits feedback:
 
-### Investigation Agent (`src/agents/fraud-investigation-stream.js`)
+```
+START → ingest → synthesize → write_lesson → END
+```
 
-Runs a fixed four-step protocol on a single `transaction_id`:
-
-1. `fetch_fraud_transaction` — retrieves the flagged record
-2. `fetch_user_history` — retrieves behavioral profile and recent transactions in parallel
-3. `search_similar_fraud_cases` — semantic vector search for top-5 similar historical cases
-4. `write_investigation_findings` — writes case notes and `route_to_human` decision back to the document
-
-Implemented as an async generator that yields typed SSE events: `step_start`, `step_done`, `token`, `done`, `error`. The web UI renders each step as a timeline card and the final report as markdown.
-
-There is also a CLI version (`src/agents/fraud-investigation-agent.js`) that takes `transaction_id` as a command-line argument and is kept separate — the web agent does not modify it.
+| Node | What it does | LLM? |
+|---|---|---|
+| `ingest` | Reads the fraud transaction + investigation results, determines whether agent and human agreed | No — deterministic |
+| `synthesize` | Claude Sonnet generates a 2-4 sentence reusable lesson from the case facts. Agreement → "confirmed pattern" lesson. Disagreement → "correction" lesson | Yes (1 call) |
+| `write_lesson` | Builds a `lesson_learned` memory document with `source: "human_confirmed"`, `agreement`, `indicators`, `lesson_type` fields. Inserts to `agent_memory`. autoEmbed indexes it automatically | No — deterministic |
 
 ### Fraud Analyst Chatbot (`src/agents/fraud-analyst-chat.js`)
 
-Conversational agent with three tools:
+A standalone conversational agent (not part of the LangGraph graphs) with four tools:
 
 | Tool | What it does |
 |---|---|
-| `search_fraud_cases` | Vector, lexical, or hybrid search over `fraud_transactions` — mode controlled by the UI toggle |
-| `run_aggregation` | Executes model-generated MongoDB aggregation pipelines. Blocks `$out` and `$merge`; caps results at 50 |
-| `get_user_risk_profile` | Fetches `user_profiles` + fraud history + recent transactions in a single parallel read |
+| `search_fraud_cases` | Vector, lexical, or hybrid search over `fraud_transactions` — mode controlled by UI toggle |
+| `run_aggregation` | Executes model-generated MongoDB aggregation pipelines. Blocks `$out`/`$merge`; caps at 50 results |
+| `get_user_risk_profile` | Fetches `user_profiles` + fraud history + recent transactions in parallel |
+| `search_agent_memory` | Searches distilled findings from past investigations and analyst reviews (including lessons learned) |
 
-The `run_aggregation` tool is the key capability: the model translates natural language into a valid MQL aggregation pipeline, which Atlas executes directly. The model sees the result set, not a bulk dump of raw data.
-
-The `search_fraud_cases` tool supports three modes passed as a `mode` parameter. Hybrid mode uses `$rankFusion` to merge a `$vectorSearch` sub-pipeline and a `$search` (BM25) sub-pipeline, with weights 0.6 / 0.4. The active mode is injected into the agent's system prompt at request time based on the user's toggle selection.
+The chatbot benefits from the learning loop automatically — as `lesson_learned` documents accumulate in `agent_memory`, the `search_agent_memory` tool surfaces them with no code changes needed.
 
 ---
 
 ## Collections
 
 ### `transactions`
-Source collection. Every document inserted here is picked up by the Stream Processing pipeline. The pipeline writes `fraud_score`, `fraud_indicators`, `status`, and `is_fraudulent` back to the same document via `$merge`.
+Source collection. Every inserted document is picked up by the Stream Processing pipeline. The pipeline writes `fraud_score`, `fraud_indicators`, `status`, and `is_fraudulent` back via `$merge`.
 
 ### `fraud_transactions`
-Read model for flagged cases. Populated by Stream Processing when `fraud_score ≥ 70`. Contains the scored transaction plus an `investigation` subdocument that the agent populates after running. Also contains a `text` field used by the autoEmbed vector index.
+Read model for flagged cases (score >= 70). Contains the scored transaction, an `investigation` subdocument (populated by the decision agent), and a `text` field for autoEmbed.
+
+**`investigation` subdocument fields:**
+
+| Field | Written by | Description |
+|---|---|---|
+| `notes` | Decision agent | Final investigation notes array |
+| `routed_to_human` | Decision agent | Whether case is escalated to human review |
+| `investigated_at` | Decision agent | Timestamp |
+| `assigned_to` | Decision agent | `"human_review_queue"` or `"automated"` |
+| `confidence` | Decision agent | `"high"`, `"medium"`, or `"low"` |
+| `recommendation` | Investigation agent | `"escalate"` or `"auto_close"` |
+| `decision_rationale` | Decision agent | Why the final decision was made |
+| `human_outcome` | Feedback endpoint | `"confirmed_fraud"` or `"false_positive"` |
+| `human_notes` | Feedback endpoint | Analyst's optional notes |
+| `human_reviewed_at` | Feedback endpoint | Timestamp |
+| `human_reviewed_by` | Feedback endpoint | Analyst ID |
 
 ### `user_profiles`
-Behavioral baselines per user: `avg_transaction_amount`, `frequent_locations`, `known_devices`. The stream processor does a `$lookup` against this collection when scoring each transaction.
+Behavioral baselines per user: `avg_transaction_amount`, `frequent_locations`, `known_devices`. Used by the stream processor's `$lookup` and the `get_user_risk_profile` tool.
+
+### `agent_memory`
+Long-term memory of distilled findings. All documents have a `summary` field with an autoEmbed vector index (`voyage-4`). Three document types coexist:
+
+| `type` | `source` | Written by | Description |
+|---|---|---|---|
+| `investigation_summary` | `agent` | Decision agent | Agent's unverified conclusion after investigation |
+| `analyst_feedback` | `human_confirmed` | Feedback endpoint | Raw record of human analyst's verdict |
+| `lesson_learned` | `human_confirmed` | Learning graph | Synthesized reusable lesson with `agreement`, `lesson_type`, `indicators` fields |
+
+The `lesson_learned` type is the key output of the learning loop. Its `lesson_type` is `"confirmed_fraud_lesson"` (agent and human agreed) or `"false_positive_lesson"` (they disagreed). The `indicators` array enables the accuracy stat aggregation in the precedent brief.
+
+### `chat_sessions`
+Per-analyst conversation history for the chatbot. Rolling summary compression with a 20-message sliding window. TTL index expires idle sessions after 14 days.
+
+### `analysts`
+Lightweight identity records (name + email), upserted on login.
 
 ---
 
-## Atlas Stream Processing Pipeline
+## Memory Architecture
 
-Defined in `stream-processing/fraud-detection-pipeline.json`. The pipeline:
+### Short-Term Memory (per analyst, ephemeral)
+- `chat_sessions` collection — one document per analyst
+- `messages` array holds verbatim turns; `summary` holds rolling LLM-compressed context
+- 20-message sliding window: overflow is summarized by Claude, summary is reinjected at conversation start
+- TTL index auto-expires after 14 days of inactivity
 
-1. Sources from `fraud_detection.transactions` on insert/update/replace
-2. Filters for `status: "pending"` documents
-3. `$lookup` against `user_profiles` to get the user's behavioral baseline
-4. Evaluates three fraud signals using `$cond` + `$concatArrays`:
-   - `high_amount`: transaction amount > 3× user's average
-   - `unusual_location`: transaction country not in user's frequent locations
-   - `new_device`: device ID not in user's known devices
-5. Computes `fraud_score` (high_amount: 25pts, unusual_location: 30pts, new_device: 20pts)
-6. `$merge` back to `transactions`, setting `status`, `is_fraudulent`, `fraud_score`, and `fraud_indicators`
+### Long-Term Memory (shared, persistent, searchable)
+- `agent_memory` collection with autoEmbed vector index on `summary`
+- Three document types: `investigation_summary`, `analyst_feedback`, `lesson_learned`
+- Trust gradient: `source: "human_confirmed"` = ground truth; `source: "agent"` = unverified reasoning
+- The Memory Retrieval Agent runs two parallel vector searches — one filtered to human-confirmed, one unfiltered — and computes an accuracy stat from `lesson_learned` documents
+- The Learning Graph writes `lesson_learned` documents that are immediately searchable by future investigations
 
-Transactions scoring ≥ 70 are written separately to `fraud_transactions` for the investigation UI.
+### How the loop closes
+1. Investigation agent flags a case → writes `investigation_summary` to `agent_memory`
+2. Human analyst reviews → submits feedback via the UI
+3. Feedback endpoint writes `analyst_feedback` to `agent_memory` (synchronous, immediate)
+4. Learning graph triggers asynchronously: ingests outcome → synthesizes lesson → writes `lesson_learned` to `agent_memory`
+5. Next investigation for similar indicators → Memory Retrieval Agent finds the lesson in vector search → includes it in the precedent brief → investigation agent has the benefit of past learning
+
+---
+
+## The Three UI Surfaces
+
+### Transaction Simulator (`/simulate.html`)
+Inject test transactions using preset fraud scenarios. Five presets cover: all indicators firing, unusual location only, high amount only, new device only, and a clean baseline. Each submission writes to `transactions` and triggers the stream processor.
+
+### Fraud Investigator (`/investigate.html`)
+Displays the 30 most recent flagged cases. Clicking a case and running an investigation streams the three graph stages via SSE:
+
+1. **Precedent Brief** — shows retrieved confirmed-fraud precedents, false-positive precedents, unverified agent precedents, and the accuracy stat
+2. **Investigation** — the investigation agent runs its tools (fetch transaction, fetch user history, search similar cases)
+3. **Decision** — shows confidence badge, recommendation, decision rationale, and routing
+
+After investigation, the analyst can submit feedback ("Confirm fraud" or "False positive"). A "Learning..." indicator confirms the lesson generation cycle has been triggered.
+
+### Interactive Analyst (`/`)
+Conversational chat interface with the Fraud Analyst Chatbot. Search mode toggle (Hybrid / Vector / Lexical) controls how `search_fraud_cases` retrieves results. The agent streams responses token by token via SSE.
 
 ---
 
 ## Atlas Search Indexes
 
-### Vector Search Index (`indexes/fraud_transactions_text_index.json`)
+Three indexes must be created in the Atlas UI. All use `autoEmbed` with `voyage-4` — no Voyage API key is needed in the application.
+
+### 1. Vector Search Index on `fraud_transactions` (`indexes/fraud_transactions_text_index.json`)
+
+Create in Atlas UI: **Atlas Search** → `fraud_detection.fraud_transactions` → name `fraud_transactions_text_index`
 
 ```json
 {
@@ -156,9 +235,9 @@ Transactions scoring ≥ 70 are written separately to `fraud_transactions` for t
 }
 ```
 
-`autoEmbed` means Atlas generates and stores the embedding at write time using Voyage AI's `voyage-4` model. At query time, `$vectorSearch` accepts a plain `query: "text string"` — no client-side embedding call, no Voyage API key required in the application.
+### 2. Lexical Search Index on `fraud_transactions` (`indexes/fraud_transactions_lexical_index.json`)
 
-### Lexical Search Index (`indexes/fraud_transactions_lexical_index.json`)
+Create in Atlas UI: **Atlas Search** → `fraud_detection.fraud_transactions` → name `fraud_transactions_lexical`
 
 ```json
 {
@@ -176,9 +255,22 @@ Transactions scoring ≥ 70 are written separately to `fraud_transactions` for t
 }
 ```
 
-BM25 full-text index for keyword search. Powers the **Lexical** mode and the lexical sub-pipeline in **Hybrid** mode. Create this index in the Atlas UI under **Atlas Search** → `fraud_detection.fraud_transactions` with name `fraud_transactions_lexical`.
+### 3. Vector Search Index on `agent_memory` (`indexes/agent_memory_text_index.json`)
 
-Both indexes must exist on the `fraud_transactions` collection for all three search modes to work. The Vector index alone is sufficient if you only use Vector mode.
+Create in Atlas UI: **Atlas Search** → `fraud_detection.agent_memory` → name `agent_memory_text_index`
+
+```json
+{
+  "fields": [
+    {
+      "modality": "text",
+      "model": "voyage-4",
+      "path": "summary",
+      "type": "autoEmbed"
+    }
+  ]
+}
+```
 
 ---
 
@@ -187,9 +279,11 @@ Both indexes must exist on the `fraud_transactions` collection for all three sea
 ### Prerequisites
 
 - Node.js 18+
-- MongoDB Atlas cluster with Atlas Stream Processing enabled
-- Atlas Vector Search index (`fraud_transactions_text_index`) created on `fraud_transactions`
-- Atlas Search lexical index (`fraud_transactions_lexical`) created on `fraud_transactions`
+- MongoDB Atlas cluster (M10+ for Stream Processing) with:
+  - Atlas Stream Processing enabled
+  - Atlas Vector Search + Atlas Search indexes created (see above)
+  - Network access configured for your IP
+  - Database user with read/write permissions
 - Anthropic API key (Claude Sonnet)
 
 ### Environment
@@ -201,7 +295,7 @@ MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=t
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-`VOYAGE_API_KEY` is not required — embeddings are handled by Atlas autoEmbed.
+`VOYAGE_API_KEY` is not required — embeddings are handled by Atlas autoEmbed server-side.
 
 ### Install
 
@@ -215,17 +309,28 @@ npm install
 npm run generate-data
 ```
 
-Creates 50 user profiles and 1,000 transactions in the `fraud_detection` database.
+Creates 50 user profiles and 1,000 transactions in the `fraud_detection` database. Also creates standard indexes on `transactions` and `user_profiles`.
+
+### Create Atlas Search Indexes
+
+Create the three indexes listed above in the Atlas UI. All three must exist for the full system to work:
+- `fraud_transactions_text_index` — powers vector search on fraud cases
+- `fraud_transactions_lexical` — powers lexical and hybrid search on fraud cases
+- `agent_memory_text_index` — powers vector search on agent memory (investigation summaries, analyst feedback, and lessons learned)
 
 ### Deploy the Stream Processing Pipeline
 
-In the Atlas UI: navigate to Stream Processing → create a processor → paste the contents of `stream-processing/fraud-detection-pipeline.json`.
+**Option A — Atlas UI:**
+1. Navigate to Stream Processing → create a processor
+2. Paste the contents of `stream-processing/fraud-detection-pipeline.json`
+3. Start the processor
 
-Or use the deploy script:
-
+**Option B — Deploy script:**
 ```bash
 node scripts/deploy-asp.js
 ```
+
+The pipeline sources from `fraud_detection.transactions`, evaluates three fraud signals (`high_amount`, `unusual_location`, `new_device`), computes a fraud score, and `$merge`s results back. Transactions scoring >= 70 are flagged.
 
 ### Run the Web Demo
 
@@ -233,7 +338,7 @@ node scripts/deploy-asp.js
 npm run fraud_ai_agent
 ```
 
-Opens the full web UI at `http://localhost:3000`. All three pages are served from here.
+Opens at `http://localhost:3000`. All three UI surfaces are served from here. The server creates a TTL index on `chat_sessions` on startup.
 
 ### Run the CLI Investigation Agent
 
@@ -241,7 +346,25 @@ Opens the full web UI at `http://localhost:3000`. All three pages are served fro
 npm run investigate <transaction_id>
 ```
 
-Runs the terminal version of the investigation agent against a specific transaction ID.
+Runs the full investigation graph (memory retrieval → investigation → decision) from the terminal and prints the findings, confidence, routing decision, and rationale.
+
+---
+
+## End-to-End Verification Walkthrough
+
+1. **Generate data:** `npm run generate-data`
+2. **Deploy stream processor:** Via Atlas UI or `node scripts/deploy-asp.js`
+3. **Submit a fraudulent transaction:** Open `http://localhost:3000/simulate.html`, use the "All Indicators" preset
+4. **Wait for scoring:** The stream processor scores the transaction and writes to `fraud_transactions` (score >= 70)
+5. **Investigate:** Open `http://localhost:3000/investigate.html`, select the case, click "Run Investigation"
+   - First run: precedent brief will be empty (no lessons learned yet)
+   - Investigation runs, decision is written, case appears with confidence badge and routing
+6. **Submit human feedback:** Click "Confirm fraud" or "False positive"
+   - Response is immediate
+   - "Learning..." indicator appears
+   - In the background, the learning graph synthesizes a lesson and writes it to `agent_memory`
+7. **Investigate a similar case:** The precedent brief now includes the confirmed fraud/false-positive precedent and an accuracy stat
+8. **Repeat:** Each human review enriches the memory. The system gets smarter with every case.
 
 ---
 
@@ -250,30 +373,40 @@ Runs the terminal version of the investigation agent against a specific transact
 ```
 .
 ├── config/
-│   └── atlas-config.js                  # Connection string + database name
+│   └── atlas-config.js                       # Connection string + database name + thresholds
 ├── indexes/
-│   ├── fraud_transactions_text_index.json    # autoEmbed vector index (voyage-4)
+│   ├── fraud_transactions_text_index.json    # autoEmbed vector index (voyage-4) on fraud_transactions
 │   ├── fraud_transactions_lexical_index.json # Atlas Search BM25 lexical index
+│   ├── agent_memory_text_index.json          # autoEmbed vector index on agent_memory
 │   └── user_profiles_text_index.json
-├── public/                              # Static web UI (served by Express)
-│   ├── index.html                       # Interactive Analyst (chatbot)
-│   ├── investigate.html                 # Fraud Investigator (agent)
-│   └── simulate.html                   # Transaction Simulator
+├── public/                                   # Static web UI (served by Express)
+│   ├── index.html                            # Interactive Analyst (chatbot)
+│   ├── investigate.html                      # Fraud Investigator (multi-agent graph + feedback)
+│   ├── simulate.html                         # Transaction Simulator
+│   └── login.html                            # Analyst login
 ├── scripts/
-│   ├── deploy-asp.js                    # Deploy the stream processing pipeline
-│   └── generate-sample-data.js         # Seed users + transactions
+│   ├── deploy-asp.js                         # Deploy the stream processing pipeline
+│   └── generate-sample-data.js              # Seed users + transactions + indexes
 ├── src/
 │   ├── agents/
-│   │   ├── fraud-analyst-chat.js        # Conversational analyst agent (generator)
-│   │   ├── fraud-investigation-agent.js # CLI investigation agent
-│   │   └── fraud-investigation-stream.js # Web investigation agent (SSE generator)
-│   ├── server.js                        # Express server — API routes + static serving
-│   └── index.js                         # Legacy entry point
+│   │   ├── agent-memory-tool.js              # search_agent_memory tool + buildInvestigationMemory + buildLessonMemory
+│   │   ├── memory-retrieval-agent.js         # Deterministic precedent brief builder (2x vector search + accuracy stat)
+│   │   ├── decision-agent.js                 # LLM decision policy + MongoDB write-back
+│   │   ├── fraud-investigation-stream.js     # Investigation agent (4 tools, accepts precedentBrief, yields findings)
+│   │   ├── fraud-investigation-agent.js      # CLI entry point (calls investigation graph)
+│   │   ├── fraud-analyst-chat.js             # Conversational analyst chatbot (4 tools, standalone)
+│   │   └── learning/
+│   │       ├── memory-graph.js               # LangGraph state graphs (investigation + learning)
+│   │       ├── outcome-ingest-agent.js       # Gathers case facts, computes agent-vs-human agreement
+│   │       └── memory-synthesis-agent.js     # LLM generates reusable lesson from case outcome
+│   ├── server.js                             # Express server — API routes + SSE streaming + learning trigger
+│   └── index.js                              # Legacy monitoring entry point
 ├── stream-processing/
-│   └── fraud-detection-pipeline.json   # Atlas Stream Processing pipeline definition
+│   └── fraud-detection-pipeline.json         # Atlas Stream Processing pipeline definition
 ├── views/
-│   └── *.json                           # Atlas view definitions
-├── .env                                 # Local environment variables (not committed)
+│   └── *.json                                # Atlas view definitions
+├── design5.md                                # Design 5 implementation plan
+├── .env                                      # Local environment variables (not committed)
 └── package.json
 ```
 
@@ -283,16 +416,50 @@ Runs the terminal version of the investigation agent against a specific transact
 
 | Script | Command | What it does |
 |---|---|---|
-| `npm run fraud_ai_agent` | `node src/server.js` | Start the web demo on port 3000 |
-| `npm run investigate <id>` | `node src/agents/fraud-investigation-agent.js` | CLI agent for a single transaction |
-| `npm run generate-data` | `node scripts/generate-sample-data.js` | Seed the database with sample data |
-| `npm start` | `node src/index.js` | Legacy monitoring process |
+| `npm run fraud_ai_agent` | `node src/server.js` | Start the web demo (all 3 UI surfaces) on port 3000 |
+| `npm run investigate <id>` | `node src/agents/fraud-investigation-agent.js <id>` | Run the full investigation graph for a single transaction from the CLI |
+| `npm run generate-data` | `node scripts/generate-sample-data.js` | Seed 50 users + 1,000 transactions + create standard indexes |
+| `npm start` | `node src/index.js` | Legacy change-stream monitoring process |
+
+---
+
+## API Endpoints
+
+| Method | Path | What it does |
+|---|---|---|
+| `POST` | `/api/login` | Name-based login (creates `analysts` record, sets cookie) |
+| `POST` | `/api/logout` | Clears analyst cookie |
+| `GET` | `/api/me` | Returns current analyst identity |
+| `POST` | `/api/transactions` | Inserts a transaction (triggers stream processor) |
+| `GET` | `/api/fraud-transactions` | Lists 30 most recent flagged cases |
+| `POST` | `/api/investigate` | Runs the investigation graph, streams SSE events (`memory_retrieval`, `investigate`, `decide`, `done`) |
+| `POST` | `/api/fraud-transactions/:id/feedback` | Records human analyst verdict, triggers learning graph asynchronously |
+| `POST` | `/api/chat` | Runs the analyst chatbot, streams SSE tokens |
+
+---
+
+## Atlas Stream Processing Pipeline
+
+Defined in `stream-processing/fraud-detection-pipeline.json`:
+
+1. **`$source`** — connects to `fraud_detection.transactions` on insert/update/replace
+2. **`$match`** — filters for `status: "pending"` documents
+3. **`$lookup`** — joins `user_profiles` to get the user's behavioral baseline
+4. **`$addFields`** — evaluates three fraud signals via `$cond` + `$concatArrays`:
+   - `high_amount`: amount > 3x user's average (25 pts)
+   - `unusual_location`: country not in user's frequent locations (30 pts)
+   - `new_device`: device ID not in user's known devices (20 pts)
+5. **`$addFields`** — computes `fraud_score` (sum of triggered signals, max 75)
+6. **`$addFields`** — sets `is_fraudulent` (score >= 70), `status` ("flagged" or "completed")
+7. **`$merge`** — writes results back to `transactions` on `transaction_id`
+
+Transactions scoring >= 70 appear in `fraud_transactions` for the investigation UI.
 
 ---
 
 ## Stream Processor Debug Commands
 
-Run these in the Atlas Stream Processing shell when troubleshooting the pipeline:
+Run these in the Atlas Stream Processing shell:
 
 ```javascript
 // Inspect live documents flowing through the source
@@ -321,8 +488,46 @@ sp["<processor-name>"].drop()
 |---|---|
 | `mongodb` | Atlas driver — all database reads and writes |
 | `@langchain/anthropic` | Claude Sonnet (`claude-sonnet-4-6`) model binding with `bindTools()` |
-| `@langchain/core` | `HumanMessage`, `SystemMessage`, `ToolMessage` primitives |
-| `langchain` | `tool()` helper for defining agent tools with Zod schemas |
+| `@langchain/core` | `HumanMessage`, `SystemMessage`, `ToolMessage`, `tool()` primitives |
+| `@langchain/langgraph` | `StateGraph`, `Annotation`, `START`, `END` — multi-agent graph orchestration |
+| `langchain` | Framework glue (transitive `langgraph` dependency) |
 | `express` | Web server for API routes and static file serving |
 | `zod` | Schema validation for tool input parameters |
 | `dotenv` | Environment variable loading |
+| `cookie-parser` | Analyst identity cookie parsing |
+
+---
+
+## Troubleshooting
+
+### Connection Issues
+
+| Error | Fix |
+|---|---|
+| `bad auth` | Check username/password in `MONGODB_URI` |
+| `IP not in whitelist` | Add your IP in Atlas → Network Access |
+| `stream processing not available` | Cluster must be M10+ |
+
+### Missing Atlas Search Indexes
+
+| Symptom | Fix |
+|---|---|
+| `vectorSearchScore` error or no results from `search_fraud_cases` | Create `fraud_transactions_text_index` on `fraud_transactions` |
+| Lexical/hybrid search returns nothing | Create `fraud_transactions_lexical` on `fraud_transactions` |
+| Precedent brief always empty | Create `agent_memory_text_index` on `agent_memory` |
+| Accuracy stat never appears | Submit at least one human feedback (creates a `lesson_learned` doc) |
+
+### Agent / Graph Issues
+
+| Symptom | Fix |
+|---|---|
+| `ANTHROPIC_API_KEY` error | Set in `.env` |
+| Investigation hangs | Check that `fraud_transactions` has documents with `status: "flagged"` |
+| Learning cycle doesn't trigger | Check server logs for `[learning] Lesson synthesis failed` |
+| Precedent brief shows empty on first run | Expected — memory bootstraps after the first human feedback |
+
+---
+
+## License
+
+MIT

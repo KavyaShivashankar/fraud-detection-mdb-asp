@@ -6,7 +6,7 @@ const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
 const config = require('../config/atlas-config');
 const { runFraudAnalyst, summarizeConversation } = require('./agents/fraud-analyst-chat');
-const { runFraudInvestigationStream } = require('./agents/fraud-investigation-stream');
+const { compiledInvestigationGraph, compiledLearningGraph, setInvestigationEventCallback } = require('./agents/learning/memory-graph');
 
 const app = express();
 app.use(express.json());
@@ -221,7 +221,15 @@ app.get('/api/fraud-transactions', async (_req, res) => {
       .project({
         _id: 0, transaction_id: 1, user_id: 1, amount: 1, currency: 1,
         fraud_score: 1, fraud_indicators: 1, location: 1, merchant: 1,
-        device: 1, timestamp: 1, 'investigation.investigated_at': 1,
+        device: 1, timestamp: 1,
+        'investigation.investigated_at': 1,
+        'investigation.routed_to_human': 1,
+        'investigation.confidence': 1,
+        'investigation.recommendation': 1,
+        'investigation.decision_rationale': 1,
+        'investigation.notes': 1,
+        'investigation.human_outcome': 1,
+        'investigation.human_reviewed_at': 1,
       })
       .toArray();
     res.json(cases);
@@ -232,7 +240,11 @@ app.get('/api/fraud-transactions', async (_req, res) => {
   }
 });
 
-// Run the investigation agent and stream progress events
+// Run the investigation graph and stream progress events.
+// The investigation graph nodes emit events via a module-level callback
+// (setInvestigationEventCallback) that forwards to the SSE stream in real time.
+// This gives the browser live tool-by-tool progress instead of waiting for
+// each graph node to complete.
 app.post('/api/investigate', async (req, res) => {
   const { transaction_id } = req.body;
   if (!transaction_id) return res.status(400).json({ error: 'transaction_id is required' });
@@ -244,15 +256,37 @@ app.post('/api/investigate', async (req, res) => {
 
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
+  // Set the callback that the graph nodes will call for every event.
+  // This fires in real time — each tool start/done, findings, token, error.
+  setInvestigationEventCallback((event) => {
+    send(event);
+  });
+
   try {
-    for await (const event of runFraudInvestigationStream(transaction_id)) {
-      send(event);
-      if (event.type === 'done') break;
+    console.log(`[server] Investigation started for ${transaction_id}`);
+
+    const stream = await compiledInvestigationGraph.stream(
+      { transaction_id },
+      { streamMode: 'updates' }
+    );
+
+    for await (const chunk of stream) {
+      const [nodeName] = Object.entries(chunk)[0];
+
+      if (nodeName === 'decide') {
+        // Decision node completion means the graph is done.
+        // The individual tool events were already streamed via the callback.
+        send({ type: 'done' });
+      }
     }
+
+    console.log(`[server] Investigation complete for ${transaction_id}`);
   } catch (err) {
     console.error('[server] Investigation error:', err);
     send({ type: 'error', text: err.message });
     send({ type: 'done' });
+  } finally {
+    setInvestigationEventCallback(null);
   }
 
   res.end();
@@ -271,14 +305,13 @@ app.post('/api/fraud-transactions/:transaction_id/feedback', async (req, res) =>
   }
 
   const client = new MongoClient(config.atlas.connectionString);
+  const reviewed_at = new Date();
   try {
     await client.connect();
     const db = client.db(config.atlas.database);
 
     const txn = await db.collection('fraud_transactions').findOne({ transaction_id });
     if (!txn) return res.status(404).json({ error: `No fraud transaction found for transaction_id: ${transaction_id}` });
-
-    const reviewed_at = new Date();
 
     await db.collection('fraud_transactions').updateOne(
       { transaction_id },
@@ -313,13 +346,23 @@ app.post('/api/fraud-transactions/:transaction_id/feedback', async (req, res) =>
       reviewed_by: req.analystId,
       created_at: reviewed_at,
     });
-
-    res.json({ success: true, transaction_id, outcome, reviewed_at });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   } finally {
     await client.close();
   }
+
+  // Trigger the learning cycle asynchronously — don't block the response.
+  // The user gets immediate confirmation; the lesson is generated in the background.
+  compiledLearningGraph.invoke({
+    transaction_id,
+    human_outcome: outcome,
+    human_notes: notes ?? '',
+  }).catch((err) => {
+    console.error('[learning] Lesson synthesis failed:', err);
+  });
+
+  res.json({ success: true, transaction_id, outcome, reviewed_at });
 });
 
 // Static files served last so API routes always take precedence
