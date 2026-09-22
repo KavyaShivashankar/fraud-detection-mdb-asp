@@ -118,6 +118,27 @@
     .graph-empty .icon { font-size: 48px; margin-bottom: 12px; }
     .graph-empty p { font-size: 14px; margin-bottom: 4px; }
     .graph-empty small { font-size: 12px; }
+
+    /* Human review node + feedback */
+    .gnode.human { border-color: var(--amber); background: linear-gradient(135deg, var(--amber-bg), var(--white)); }
+    .gnode.human .gnode-status { color: var(--amber); }
+    .gnode.human.done { border-color: var(--green-dark); }
+    .gnode.human.done .gnode-status { color: var(--green-dark); }
+    .gfeedback { width: 380px; margin-top: 14px; border-radius: 10px; border: 1px solid var(--grey-200); background: var(--white); padding: 16px 18px; display: none; }
+    .gfeedback.visible { display: block; animation: fadeIn .4s; }
+    .gfeedback-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--grey-400); margin-bottom: 10px; }
+    .gfeedback-btns { display: flex; gap: 10px; }
+    .gfeedback-btn { border: 1px solid var(--grey-200); background: var(--white); border-radius: 8px; padding: 8px 16px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s; font-family: inherit; }
+    .gfeedback-btn.confirm:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .gfeedback-btn.reject:hover:not(:disabled) { border-color: var(--green-dark); color: var(--green-dark); }
+    .gfeedback-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .gfeedback-recorded { font-size: 12px; color: var(--grey-600); }
+    .gfeedback .learning-indicator { margin-top: 8px; font-size: 11px; color: var(--green-mid); }
+    .gedge.human-edge { background: var(--grey-200); }
+    .gedge.human-edge.active { background: linear-gradient(180deg, var(--amber), var(--green-mid)); }
+    .gedge.human-edge.active::after { border-top-color: var(--green-mid); }
+    .gedge.human-edge .flow-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .gedge.human-edge.active .flow-dot { background: var(--green-light); box-shadow: 0 0 6px var(--green-mid); }
   </style>
 </head>
 <body>
@@ -203,6 +224,21 @@
           <div class="gedge" id="edge-dec-end"><div class="flow-dot"></div></div>
 
           <div class="gmarker" id="gmarker-end">END</div>
+          <div class="gedge human-edge" id="edge-end-human" style="display:none"><div class="flow-dot"></div></div>
+          <div class="gnode pending" id="gnode-human_review" style="display:none">
+            <div class="gnode-header"><span class="gnode-icon">👤</span><span class="gnode-title">Human Review</span></div>
+            <div class="gnode-desc">Analyst verifies the decision — triggers the learning loop</div>
+            <div class="gnode-status" id="gstatus-human_review">PENDING</div>
+          </div>
+
+          <div class="gfeedback" id="gfeedback">
+            <div class="gfeedback-title">Human Review — Was this correct?</div>
+            <div class="gfeedback-btns" id="gfeedback-btns">
+              <button class="gfeedback-btn confirm" onclick="submitFeedback('confirmed_fraud', this)">✓ Confirm fraud</button>
+              <button class="gfeedback-btn reject" onclick="submitFeedback('false_positive', this)">✗ False positive</button>
+            </div>
+            <div class="learning-indicator" id="learning-indicator" style="display:none">🧠 Learning… synthesizing lesson</div>
+          </div>
 
           <div class="gprogress-wrap">
             <div class="gprogress-track"><div class="gprogress-fill" id="gprogress-fill"></div></div>
@@ -296,6 +332,12 @@
     document.getElementById('gprogress-fill').style.width = '0%';
     document.getElementById('gprogress-label').textContent = 'Waiting to start…';
     document.getElementById('gresult').classList.remove('visible');
+    document.getElementById('gfeedback').classList.remove('visible');
+    document.getElementById('gfeedback-btns').style.display = '';
+    document.getElementById('learning-indicator').style.display = 'none';
+    const hrNode = document.getElementById('gnode-human_review'); if (hrNode) { hrNode.className = 'gnode pending'; hrNode.style.display = 'none'; }
+    const hrEdge = document.getElementById('edge-end-human'); if (hrEdge) { hrEdge.classList.remove('active'); hrEdge.style.display = 'none'; }
+    const hrSt = document.getElementById('gstatus-human_review'); if (hrSt) hrSt.textContent = 'PENDING';
   }
 
   function showGraphCanvas() { document.getElementById('graph-empty').style.display = 'none'; document.getElementById('graph-canvas').style.display = 'flex'; }
@@ -319,6 +361,25 @@
     document.getElementById('gmarker-end').className = 'gmarker active';
     setProgress(100, 'Investigation complete');
     showGraphResult(inv.confidence, inv.recommendation, inv.routed_to_human);
+    if (inv.routed_to_human || inv.human_outcome) { showHumanReview(inv); }
+  }
+
+  function showHumanReview(inv) {
+    var hrNode = document.getElementById('gnode-human_review');
+    var hrEdge = document.getElementById('edge-end-human');
+    if (hrNode) { hrNode.style.display = ''; hrNode.className = 'gnode human pending'; }
+    if (hrEdge) { hrEdge.style.display = ''; hrEdge.classList.add('active'); }
+    document.getElementById('gmarker-end').className = 'gmarker active';
+    var fb = document.getElementById('gfeedback');
+    fb.classList.add('visible');
+    if (inv.human_outcome) {
+      var isFraud = inv.human_outcome === 'confirmed_fraud';
+      setNodeState('human_review', 'done', 'REVIEWED');
+      var label = isFraud ? '\uD83D\uDD34 Analyst confirmed: fraud' : '\u2705 Analyst confirmed: false positive';
+      if (inv.human_reviewed_at) label += ' \u00B7 ' + new Date(inv.human_reviewed_at).toLocaleString();
+      if (inv.human_notes) label += ' \u00B7 "' + inv.human_notes + '"';
+      document.getElementById('gfeedback-btns').innerHTML = '<span class="gfeedback-recorded">' + label + '</span>';
+    }
   }
 
   function updateGraph(eventType, event) {
@@ -339,7 +400,7 @@
     }
     if (eventType === 'step_done') {
       if (tool === 'memory_retrieval') { setNodeState('memory_retrieval','done','DONE'); setProgress(20, 'Precedent brief ready'); }
-      else if (tool === 'decision') { setNodeState('decision','done','DONE'); activateEdge('edge-dec-end'); setProgress(100, 'Investigation complete'); document.getElementById('gmarker-end').className = 'gmarker active'; const r = event.result || {}; showGraphResult(r.confidence, r.recommendation, r.route_to_human); }
+      else if (tool === 'decision') { setNodeState('decision','done','DONE'); activateEdge('edge-dec-end'); setProgress(100, 'Investigation complete'); document.getElementById('gmarker-end').className = 'gmarker active'; const r = event.result || {}; showGraphResult(r.confidence, r.recommendation, r.route_to_human); if (r.route_to_human) showHumanReview({}); }
       else if (['fetch_fraud_transaction','fetch_user_history','search_similar_fraud_cases','submit_investigation_findings'].includes(tool)) { setToolState(tool,'done'); const pm = {fetch_fraud_transaction:35,fetch_user_history:45,search_similar_fraud_cases:60,submit_investigation_findings:70}; if (pm[tool]) setProgress(pm[tool], tool.replace(/_/g,' ') + ' complete'); }
       else if (tool === 'investigation_complete') { setNodeState('investigate','done','DONE'); setProgress(75, 'Investigation complete'); }
     }
@@ -376,6 +437,27 @@
       loadCases().then(() => { const i = window._cases?.findIndex(c => c.transaction_id === selectedCase.transaction_id); if (i >= 0) document.getElementById('case-' + i)?.classList.add('selected'); });
     } catch (e) { setProgress(100, 'Error: ' + e.message); btn.textContent = '↺ Retry'; }
     busy = false; btn.disabled = false;
+  }
+
+  async function submitFeedback(outcome, btnEl) {
+    if (!selectedCase) return;
+    const btns = document.getElementById("gfeedback-btns");
+    btns.querySelectorAll("button").forEach(b => b.disabled = true);
+    try {
+      const res = await fetch("/api/fraud-transactions/" + encodeURIComponent(selectedCase.transaction_id) + "/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "HTTP " + res.status);
+      const isFraud = outcome === "confirmed_fraud";
+      btns.innerHTML = "<span class="gfeedback-recorded">" + (isFraud ? "🔴 Analyst confirmed: fraud" : "✅ Analyst confirmed: false positive") + " · 🧠 Learning…</span>";
+      document.getElementById("learning-indicator").style.display = "";
+      setNodeState("human_review", "done", "REVIEWED");
+    } catch (e) {
+      btns.querySelectorAll("button").forEach(b => b.disabled = false);
+      alert("Failed to record feedback: " + e.message);
+    }
   }
 
   loadCases();
