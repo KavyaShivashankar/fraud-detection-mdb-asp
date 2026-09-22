@@ -294,6 +294,75 @@ app.get('/api/accuracy-stats/:transaction_id', async (req, res) => {
   }
 });
 
+
+// Get the precedent brief for a transaction (used by learning-flow.html)
+app.get('/api/precedent-brief/:transaction_id', async (req, res) => {
+  const { transaction_id } = req.params;
+  const client = new MongoClient(config.atlas.connectionString);
+  try {
+    await client.connect();
+    const db = client.db(config.atlas.database);
+
+    const txn = await db.collection('fraud_transactions').findOne({ transaction_id });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+
+    const indicators = txn.fraud_indicators ?? [];
+    const queryText = [
+      `Fraud case with indicators: ${indicators.join(', ')}`,
+      `Amount: ${txn.amount} ${txn.currency}`,
+      `Location: ${txn.location?.country}, ${txn.location?.city}`,
+      `Device: ${txn.device?.device_type}, ${txn.device?.os}`,
+      `Merchant: ${txn.merchant?.merchant_name}`,
+    ].join('. ');
+
+    const [verified, allMemory] = await Promise.all([
+      db.collection('agent_memory').aggregate([
+        { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
+        { $match: { source: 'human_confirmed' } },
+        { $limit: 6 },
+        { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, outcome: 1, lesson_type: 1, indicators: 1, created_at: 1, score: { $meta: 'vectorSearchScore' } } },
+      ]).toArray(),
+      db.collection('agent_memory').aggregate([
+        { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
+        { $limit: 6 },
+        { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, source: 1, outcome: 1, score: { $meta: 'vectorSearchScore' } } },
+      ]).toArray(),
+    ]);
+
+    // Accuracy stat
+    let accuracy = null;
+    if (indicators.length) {
+      const statResult = await db.collection('agent_memory').aggregate([
+        { $match: { type: 'lesson_learned', source: 'human_confirmed' } },
+        { $match: { indicators: { $all: indicators } } },
+        { $group: { _id: null, total: { $sum: 1 }, agreed: { $sum: { $cond: ['$agreement', 1, 0] } } } },
+      ]).toArray();
+      if (statResult.length) {
+        const { total, agreed } = statResult[0];
+        accuracy = { total, agreed, rate: Math.round((agreed / total) * 100) };
+      }
+    }
+
+    const confirmedFraud = verified.filter(m => m.outcome === 'confirmed_fraud');
+    const confirmedFalsePositive = verified.filter(m => m.outcome === 'false_positive');
+    const unverified = allMemory.filter(m => m.source === 'agent');
+
+    res.json({
+      transaction_id,
+      indicators,
+      queryText,
+      confirmedFraud,
+      confirmedFalsePositive,
+      unverified,
+      accuracy,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await client.close();
+  }
+});
+
 // Run the investigation graph and stream progress events.
 // The investigation graph nodes emit events via a module-level callback
 // (setInvestigationEventCallback) that forwards to the SSE stream in real time.
