@@ -382,6 +382,7 @@
       if (inv.human_notes) label += ' \u00B7 "' + inv.human_notes + '"';
       document.getElementById('gfeedback-btns').innerHTML = '<span class="gfeedback-recorded">' + label + '</span>';
       setProgress(100, 'Investigation + review complete');
+      document.getElementById('learning-indicator').style.display = 'none';
     } else {
       // No feedback yet — show buttons, mark node as waiting
       setNodeState('human_review', 'running', 'AWAITING REVIEW');
