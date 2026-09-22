@@ -103,14 +103,29 @@ function generateUserProfile(userId) {
 /**
  * Generate a transaction
  */
-function generateTransaction(userId, accountId, isFraudulent = false) {
+function generateTransaction(userId, accountId, fraudType = null, knownDevices = []) {
   const transactionId = `txn_${Date.now()}_${randomBetween(1000, 9999)}`;
   const merchant = randomElement(MERCHANTS);
-  const city = isFraudulent ? randomElement(CITIES.filter(c => c.country !== 'US')) : randomElement(CITIES.filter(c => c.country === 'US'));
-  
+
+  const signals = fraudType ? fraudType.split('+') : [];
+
+  const city = signals.includes('unusual_location')
+    ? randomElement(CITIES.filter(c => c.country !== 'US'))
+    : randomElement(CITIES.filter(c => c.country === 'US'));
+
   const baseAmount = randomBetween(10, 300);
-  const amount = isFraudulent ? baseAmount * randomBetween(5, 10) : baseAmount;
-  
+  const amount = signals.includes('high_amount')
+    ? randomBetween(1000, 5000)
+    : baseAmount;
+
+  // Use a known device if available and new_device signal not requested
+  let deviceId;
+  if (signals.includes('new_device') || !knownDevices.length) {
+    deviceId = `dev_${randomBetween(10000, 99999)}`;
+  } else {
+    deviceId = knownDevices[Math.floor(Math.random() * knownDevices.length)];
+  }
+
   return {
     transaction_id: transactionId,
     timestamp: new Date(),
@@ -135,7 +150,7 @@ function generateTransaction(userId, accountId, isFraudulent = false) {
       }
     },
     device: {
-      device_id: isFraudulent ? `dev_${randomBetween(10000, 99999)}` : `dev_${randomBetween(1000, 9999)}`,
+      device_id: deviceId,
       device_type: randomElement(DEVICE_TYPES),
       os: randomElement(OS_TYPES),
       browser: randomElement(['Chrome', 'Safari', 'Firefox', 'Edge'])
@@ -152,7 +167,6 @@ function generateTransaction(userId, accountId, isFraudulent = false) {
     metadata: {}
   };
 }
-
 /**
  * Main function to generate and insert sample data
  */
@@ -186,27 +200,44 @@ async function generateSampleData() {
     await usersCollection.insertMany(users);
     console.log(`✓ Created ${numUsers} user profiles`);
 
-    // Generate transactions
-    console.log('\nGenerating transactions...');
+    // Generate transactions with varied fraud patterns
     const transactions = [];
     const numTransactionsPerUser = 20;
     const fraudPercentage = 0.05; // 5% fraudulent transactions
 
+    // Fraud pattern types — each triggers different indicators
+    const fraudPatterns = [
+      'high_amount',                                    // only high_amount
+      'unusual_location',                               // only unusual_location
+      'new_device',                                     // only new_device
+      'high_amount+unusual_location',                   // two signals
+      'high_amount+new_device',                         // two signals
+      'unusual_location+new_device',                    // two signals
+      'high_amount+unusual_location+new_device',        // all three
+    ];
+
+    let fraudCount = 0;
+    let cleanCount = 0;
+
     for (const user of users) {
       for (let i = 0; i < numTransactionsPerUser; i++) {
-        const isFraudulent = Math.random() < fraudPercentage;
-        transactions.push(generateTransaction(user.user_id, user.account_id, isFraudulent));
-
-        // Add small delay between transactions
+        if (Math.random() < fraudPercentage) {
+          // Pick a random fraud pattern
+          const pattern = fraudPatterns[Math.floor(Math.random() * fraudPatterns.length)];
+          transactions.push(generateTransaction(user.user_id, user.account_id, pattern, user.patterns.known_devices));
+          fraudCount++;
+        } else {
+          transactions.push(generateTransaction(user.user_id, user.account_id, null, user.patterns.known_devices));
+          cleanCount++;
+        }
         await new Promise(resolve => setTimeout(resolve, 10));
       }
     }
 
     await transactionsCollection.insertMany(transactions);
     console.log(`✓ Created ${transactions.length} transactions`);
-    console.log(`  - Legitimate: ${transactions.filter(t => !t.is_fraudulent).length}`);
-    console.log(`  - Potentially fraudulent: ${Math.floor(transactions.length * fraudPercentage)}`);
-
+    console.log(`  - Legitimate: ${cleanCount}`);
+    console.log(`  - Potentially fraudulent: ${fraudCount} (varied patterns: single, double, and triple indicator)`);
     // Create indexes
     console.log('\nCreating indexes...');
 
