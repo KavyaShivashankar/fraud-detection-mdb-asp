@@ -356,7 +356,7 @@
       var isFraud = example && example.outcome === 'confirmed_fraud';
       html += '<strong>Investigation #1</strong> (' + (example ? example.transaction_id : 'txn_A') + '): Agent flagged as fraud. Human said <strong>' + (isFraud ? 'confirmed fraud' : 'false positive') + '</strong>.<br>';
       html += 'Lesson written: <em>"' + escapeHtml((example ? example.summary : '').slice(0, 100)) + '..."</em><br><br>';
-      html += '<strong>Investigation #2</strong> (current case): Memory Retrieval finds this lesson via $vectorSearch (score: ' + (example ? example.score.toFixed(3) : '0.87') + '). The precedent brief now includes it. The Investigation Agent reads it and adjusts its analysis.';
+      html += '<strong>Investigation #2</strong> (current case): Memory Retrieval finds this lesson via $vectorSearch (score: ' + (example && example.score != null ? example.score.toFixed(3) : 'N/A (matched by indicators)') + '). The precedent brief now includes it. The Investigation Agent reads it and adjusts its analysis.';
     } else {
       html += '<strong>This case has no learned precedents yet.</strong> Once a human reviews it and submits feedback, the learning graph will write a lesson. The next investigation for similar indicators will find that lesson in the precedent brief.';
     }
