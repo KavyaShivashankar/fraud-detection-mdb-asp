@@ -315,19 +315,53 @@ app.get('/api/precedent-brief/:transaction_id', async (req, res) => {
       `Merchant: ${txn.merchant?.merchant_name}`,
     ].join('. ');
 
-    const [verified, allMemory] = await Promise.all([
-      db.collection('agent_memory').aggregate([
-        { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
-        { $match: { source: 'human_confirmed' } },
-        { $limit: 6 },
-        { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, outcome: 1, lesson_type: 1, indicators: 1, created_at: 1, score: { $meta: 'vectorSearchScore' } } },
-      ]).toArray(),
-      db.collection('agent_memory').aggregate([
-        { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
-        { $limit: 6 },
-        { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, source: 1, outcome: 1, score: { $meta: 'vectorSearchScore' } } },
-      ]).toArray(),
-    ]);
+    // Try $vectorSearch first, fall back to $match on indicators if no results
+    let verified = [];
+    let allMemory = [];
+
+    try {
+      [verified, allMemory] = await Promise.all([
+        db.collection('agent_memory').aggregate([
+          { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
+          { $match: { source: 'human_confirmed' } },
+          { $limit: 6 },
+          { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, outcome: 1, lesson_type: 1, indicators: 1, created_at: 1, score: { $meta: 'vectorSearchScore' } } },
+        ]).toArray(),
+        db.collection('agent_memory').aggregate([
+          { $vectorSearch: { index: 'agent_memory_text_index', path: 'summary', query: queryText, numCandidates: 50, limit: 10, model: 'voyage-4' } },
+          { $limit: 6 },
+          { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, source: 1, outcome: 1, score: { $meta: 'vectorSearchScore' } } },
+        ]).toArray(),
+      ]);
+    } catch (e) {
+      // Vector search failed (index might not exist) — fall through to fallback
+    }
+
+    // Fallback: if vector search returned nothing, use $match on indicators
+    if (verified.length === 0 && allMemory.length === 0 && indicators.length > 0) {
+      [verified, allMemory] = await Promise.all([
+        db.collection('agent_memory').aggregate([
+          { $match: { source: 'human_confirmed', transaction_id: { $ne: transaction_id } } },
+          { $match: { $or: [
+            { indicators: { $all: indicators } },
+            { tags: { $all: indicators } },
+          ] } },
+          { $sort: { created_at: -1 } },
+          { $limit: 6 },
+          { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, outcome: 1, lesson_type: 1, indicators: 1, created_at: 1, score: null } },
+        ]).toArray(),
+        db.collection('agent_memory').aggregate([
+          { $match: { source: 'agent', transaction_id: { $ne: transaction_id } } },
+          { $match: { $or: [
+            { indicators: { $all: indicators } },
+            { tags: { $all: indicators } },
+          ] } },
+          { $sort: { created_at: -1 } },
+          { $limit: 6 },
+          { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, source: 1, outcome: 1, score: null } },
+        ]).toArray(),
+      ]);
+    }
 
     // Accuracy stat
     let accuracy = null;
