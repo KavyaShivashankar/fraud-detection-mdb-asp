@@ -333,7 +333,7 @@
     document.getElementById('gprogress-label').textContent = 'Waiting to start…';
     document.getElementById('gresult').classList.remove('visible');
     document.getElementById('gfeedback').classList.remove('visible');
-    document.getElementById('gfeedback-btns').style.display = '';
+    document.getElementById('gfeedback-btns').innerHTML = '<button class="gfeedback-btn confirm" onclick="submitFeedback(\'confirmed_fraud\', this)">\u2713 Confirm fraud</button><button class="gfeedback-btn reject" onclick="submitFeedback(\'false_positive\', this)">\u2717 False positive</button>';
     document.getElementById('learning-indicator').style.display = 'none';
     const hrNode = document.getElementById('gnode-human_review'); if (hrNode) { hrNode.className = 'gnode pending'; hrNode.style.display = 'none'; }
     const hrEdge = document.getElementById('edge-end-human'); if (hrEdge) { hrEdge.classList.remove('active'); hrEdge.style.display = 'none'; }
@@ -367,21 +367,26 @@
   function showHumanReview(inv) {
     var hrNode = document.getElementById('gnode-human_review');
     var hrEdge = document.getElementById('edge-end-human');
-    if (hrNode) { hrNode.style.display = ''; hrNode.className = 'gnode human pending'; }
+    if (hrNode) { hrNode.style.display = ''; }
     if (hrEdge) { hrEdge.style.display = ''; hrEdge.classList.add('active'); }
     document.getElementById('gmarker-end').className = 'gmarker active';
     var fb = document.getElementById('gfeedback');
     fb.classList.add('visible');
+
     if (inv.human_outcome) {
-      var isFraud = inv.human_outcome === 'confirmed_fraud';
+      // Feedback already recorded — show verdict, mark node as done
       setNodeState('human_review', 'done', 'REVIEWED');
+      var isFraud = inv.human_outcome === 'confirmed_fraud';
       var label = isFraud ? '\uD83D\uDD34 Analyst confirmed: fraud' : '\u2705 Analyst confirmed: false positive';
       if (inv.human_reviewed_at) label += ' \u00B7 ' + new Date(inv.human_reviewed_at).toLocaleString();
       if (inv.human_notes) label += ' \u00B7 "' + inv.human_notes + '"';
       document.getElementById('gfeedback-btns').innerHTML = '<span class="gfeedback-recorded">' + label + '</span>';
+      setProgress(100, 'Investigation + review complete');
+    } else {
+      // No feedback yet — show buttons, mark node as waiting
+      setNodeState('human_review', 'running', 'AWAITING REVIEW');
     }
   }
-
   function updateGraph(eventType, event) {
     const tool = event.tool;
     if (eventType === 'step_start') {
