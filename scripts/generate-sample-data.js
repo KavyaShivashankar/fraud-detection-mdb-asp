@@ -67,13 +67,13 @@ function generateUserProfile(userId) {
     account_status: 'active',
     kyc_verified: Math.random() > 0.1,
     patterns: {
-      avg_transaction_amount: randomBetween(50, 300),
+      avg_transaction_amount: userId === "user_00001" ? randomBetween(100, 300) : randomBetween(50, 300),
       avg_daily_transactions: randomBetween(1, 5),
       common_transaction_hours: [9, 12, 14, 18, 20],
       frequent_locations: [
         { country: 'US', city: randomElement(CITIES.filter(c => c.country === 'US')).name, count: randomBetween(100, 500) }
       ],
-      known_devices: [`dev_${randomBetween(1000, 9999)}`],
+      known_devices: userId === "user_00001" ? ["dev_abc123"] : [`dev_${randomBetween(1000, 9999)}`],
       frequent_merchants: MERCHANTS.slice(0, 3).map(m => ({
         merchant_id: m.id,
         merchant_name: m.name,
