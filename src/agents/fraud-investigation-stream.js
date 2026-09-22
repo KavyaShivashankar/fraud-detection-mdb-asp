@@ -8,7 +8,8 @@ const { z } = require('zod');
 const config = require('../../config/atlas-config');
 
 // ---------------------------------------------------------------------------
-// Tools (same logic as fraud-investigation-agent.js, scoped to this agent)
+// Tools — investigation-only tools. Memory retrieval and decision/write-back
+// are handled by separate graph nodes (memory-retrieval-agent, decision-agent).
 // ---------------------------------------------------------------------------
 
 const fetchFraudTransactionTool = tool(
@@ -101,57 +102,55 @@ const searchSimilarFraudTool = tool(
   }
 );
 
-const writeInvestigationFindingsTool = tool(
-  async ({ transaction_id, notes, route_to_human }) => {
-    const client = new MongoClient(config.atlas.connectionString);
-    try {
-      await client.connect();
-      const result = await client
-        .db(config.atlas.database)
-        .collection('fraud_transactions')
-        .updateOne(
-          { transaction_id },
-          {
-            $set: {
-              'investigation.notes': Array.isArray(notes) ? notes : [notes],
-              'investigation.routed_to_human': route_to_human,
-              'investigation.investigated_at': new Date(),
-              'investigation.assigned_to': route_to_human ? 'human_review_queue' : 'automated',
-            },
-          }
-        );
-      return JSON.stringify({ transaction_id, modified: result.modifiedCount, route_to_human });
-    } finally {
-      await client.close();
-    }
+const submitFindingsTool = tool(
+  async ({ findings, confidence, recommendation }) => {
+    return JSON.stringify({ findings, confidence, recommendation });
   },
   {
-    name: 'write_investigation_findings',
-    description: 'Writes the investigation summary back to the fraud_transactions document. Always call this last.',
+    name: 'submit_investigation_findings',
+    description:
+      'Submit your investigation findings, confidence level, and recommendation. This is your final step — do not write to the database yourself.',
     schema: z.object({
-      transaction_id: z.string(),
-      notes: z.union([z.string(), z.array(z.string())]),
-      route_to_human: z.boolean(),
+      findings: z.string().describe('Detailed investigation summary covering what happened, how it deviates from normal behavior, what precedents suggest, and risk assessment'),
+      confidence: z.enum(['high', 'medium', 'low']).describe('Your confidence in the conclusion'),
+      recommendation: z.enum(['escalate', 'auto_close']).describe('Whether to escalate to human review or auto-close'),
     }),
   }
 );
 
-const TOOLS = [fetchFraudTransactionTool, fetchUserHistoryTool, searchSimilarFraudTool, writeInvestigationFindingsTool];
+const TOOLS = [
+  fetchFraudTransactionTool,
+  fetchUserHistoryTool,
+  searchSimilarFraudTool,
+  submitFindingsTool,
+];
 
-const SYSTEM_PROMPT = `You are a senior fraud investigation specialist. Investigate the given transaction by following this protocol exactly:
-1. fetch_fraud_transaction — get fraud score, indicators, amount, location, device, merchant
+// ---------------------------------------------------------------------------
+// System prompt — includes precedent brief context
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROMPT = `You are a senior fraud investigation specialist. You have been provided with a PRECEDENT BRIEF containing similar past cases — both confirmed fraud and confirmed false positives — and the agent's historical accuracy for this case type. Use this context to guide your investigation.
+
+Follow this protocol:
+1. fetch_fraud_transaction — get the flagged transaction details
 2. fetch_user_history — get behavioral baseline and recent transactions
-3. search_similar_fraud_cases — find past cases matching this pattern
-4. Synthesize findings: what happened, how it deviates from normal behavior, what similar cases suggest, risk assessment
-5. write_investigation_findings — write your case summary and set route_to_human
+3. search_similar_fraud_cases — find similar historical cases
+4. Submit your findings using submit_investigation_findings — include:
+   - What happened and which indicators fired
+   - How this deviates from normal behavior
+   - What the precedent brief and similar cases suggest
+   - Risk assessment: likely fraud or possible false positive?
+   - Your confidence level (high/medium/low)
+   - Recommended action: auto-close or escalate to human
 
-Be precise and evidence-based.`;
+Be precise, evidence-based, and concise. Flag any ambiguities that a human analyst should resolve.`;
 
 // ---------------------------------------------------------------------------
 // Streaming generator
 // Yields:
 //   { type: 'step_start', tool: string, args: object }
 //   { type: 'step_done',  tool: string, result: object }
+//   { type: 'findings_submitted', findings: string, confidence: string, recommendation: string }
 //   { type: 'token',      text: string }
 //   { type: 'done' }
 //   { type: 'error',      text: string }
@@ -163,7 +162,7 @@ function extractText(content) {
   return '';
 }
 
-async function* runFraudInvestigationStream(transactionId) {
+async function* runInvestigationAgent(transaction_id, precedentBrief) {
   const model = new ChatAnthropic({
     model: 'claude-sonnet-4-6',
     thinking: { type: 'adaptive' },
@@ -172,11 +171,11 @@ async function* runFraudInvestigationStream(transactionId) {
   const messages = [
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(
-      `Investigate transaction_id: "${transactionId}". Follow the full protocol and write your findings back.`
+      `Investigate transaction_id: "${transaction_id}". Complete the full investigation protocol and submit your findings.\n\n${precedentBrief ?? ''}`
     ),
   ];
 
-  for (let turn = 1; turn <= 10; turn++) {
+  for (let turn = 1; turn <= 8; turn++) {
     const response = await model.invoke(messages);
     messages.push(response);
 
@@ -193,12 +192,18 @@ async function* runFraudInvestigationStream(transactionId) {
       const match = TOOLS.find((t) => t.name === tc.name);
       const resultStr = await match.invoke(tc.args);
       messages.push(new ToolMessage({ content: resultStr, tool_call_id: tc.id }));
+
+      if (tc.name === 'submit_investigation_findings') {
+        const parsed = JSON.parse(resultStr);
+        yield { type: 'findings_submitted', ...parsed };
+      }
+
       yield { type: 'step_done', tool: tc.name, result: JSON.parse(resultStr) };
     }
   }
 
-  yield { type: 'error', text: 'Agent exceeded 10 turns without completing.' };
+  yield { type: 'error', text: 'Agent exceeded 8 turns without completing.' };
   yield { type: 'done' };
 }
 
-module.exports = { runFraudInvestigationStream };
+module.exports = { runInvestigationAgent };

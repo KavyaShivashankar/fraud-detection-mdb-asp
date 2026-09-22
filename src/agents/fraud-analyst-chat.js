@@ -6,6 +6,7 @@ const { HumanMessage, SystemMessage, ToolMessage, AIMessage } = require('@langch
 const { MongoClient } = require('mongodb');
 const { z } = require('zod');
 const config = require('../../config/atlas-config');
+const { searchAgentMemoryTool } = require('./agent-memory-tool');
 
 const ALLOWED_COLLECTIONS = ['fraud_transactions', 'transactions', 'user_profiles'];
 const FORBIDDEN_STAGES = ['$out', '$merge', '$indexStats', '$currentOp', '$listLocalSessions'];
@@ -218,7 +219,7 @@ const getUserRiskProfileTool = tool(
   }
 );
 
-const TOOLS = [searchFraudCasesTool, runAggregationTool, getUserRiskProfileTool];
+const TOOLS = [searchFraudCasesTool, runAggregationTool, getUserRiskProfileTool, searchAgentMemoryTool];
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -226,13 +227,15 @@ const TOOLS = [searchFraudCasesTool, runAggregationTool, getUserRiskProfileTool]
 
 const SYSTEM_PROMPT = `You are an expert fraud analyst assistant with direct access to a real-time fraud detection database. You help fraud investigators, risk teams, and compliance analysts understand fraud patterns and investigate cases.
 
-You have three tools:
+You have four tools:
 - search_fraud_cases: semantic search over fraud history using natural language
 - run_aggregation: generate and run any MongoDB aggregation pipeline for analytics
 - get_user_risk_profile: full risk profile, transaction history, and fraud history for a specific user
+- search_agent_memory: search distilled conclusions from past investigations and analyst reviews — what was decided and why, not raw transactions. Results marked source: "human_confirmed" are analyst-verified ground truth; source: "agent" results are a prior agent's unverified conclusion, worth citing as precedent but not as fact
 
 When answering:
 - Run the appropriate tool(s) first, then explain findings in plain language
+- For questions about whether a pattern is actually fraud, or what past cases concluded, check search_agent_memory alongside search_fraud_cases
 - Highlight key numbers and patterns — do not dump raw data
 - For time-based queries ("last week", "past 30 days"), translate to ISO date ranges in the pipeline using $gte/$lte
 - For facet/breakdown questions, use $facet in the aggregation
@@ -260,6 +263,7 @@ function statusLabel(toolName, args) {
   }
   if (toolName === 'run_aggregation') return `Aggregating ${args.collection}`;
   if (toolName === 'get_user_risk_profile') return `Looking up ${args.user_id}`;
+  if (toolName === 'search_agent_memory') return `Recalling past findings: "${args.query_text}"`;
   return `Running ${toolName}`;
 }
 
@@ -303,5 +307,24 @@ async function* runFraudAnalyst(userMessage, conversationHistory = [], searchMod
   yield { type: 'done' };
 }
 
-module.exports = { runFraudAnalyst };
+// ---------------------------------------------------------------------------
+// Session memory: compress the oldest chunk of a session's buffer into a
+// short rolling summary so long conversations don't grow the context window
+// without bound. Called by the server when a session's message buffer
+// exceeds its window.
+// ---------------------------------------------------------------------------
+
+async function summarizeConversation(messages, priorSummary) {
+  const model = new ChatAnthropic({ model: 'claude-sonnet-4-6' });
+
+  const transcript = messages.map((m) => `${m.role}: ${m.content}`).join('\n');
+  const prompt = `Summarize the key facts, entities (user_ids, transaction_ids, merchants), and conclusions from this fraud-analysis conversation excerpt in 2-4 sentences, written so it can be used as background context for continuing the conversation.${
+    priorSummary ? ` Merge it with this existing summary rather than replacing it:\n\n${priorSummary}` : ''
+  }\n\nExcerpt:\n${transcript}`;
+
+  const response = await model.invoke([new HumanMessage(prompt)]);
+  return extractText(response.content);
+}
+
+module.exports = { runFraudAnalyst, summarizeConversation };
 // Search modes: 'vector' | 'lexical' | 'hybrid'

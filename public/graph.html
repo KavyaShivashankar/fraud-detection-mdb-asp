@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Investigation Graph · MongoDB</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Mono:wght@400;500&display=swap" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green-dark: #00684A; --green-mid: #00A35C; --green-light: #00ED64; --green-bg: #E8F5EE;
+      --grey-50: #F9FAFB; --grey-100: #F3F4F6; --grey-200: #E5E7EB; --grey-400: #9CA3AF;
+      --grey-600: #4B5563; --grey-700: #374151; --grey-900: #111827;
+      --red-bg: #FEF2F2; --red-border: #FECACA; --red: #DC2626;
+      --amber: #D97706; --amber-bg: #FFFBEB; --white: #FFFFFF;
+      --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08); --shadow-md: 0 4px 6px -1px rgba(0,0,0,.1);
+    }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: 'Inter', sans-serif; background: var(--grey-100); color: var(--grey-900); display: flex; flex-direction: column; }
+    header { background: var(--green-dark); height: 56px; padding: 0 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; box-shadow: var(--shadow-md); }
+    .logo { font-size: 18px; }
+    header h1 { color: white; font-size: 15px; font-weight: 600; }
+    nav { margin-left: auto; display: flex; gap: 16px; }
+    nav a { color: rgba(255,255,255,.7); text-decoration: none; font-size: 13px; padding: 5px 12px; border-radius: 6px; transition: background .15s, color .15s; }
+    nav a:hover { background: rgba(255,255,255,.1); color: white; }
+    nav a.active { background: rgba(255,255,255,.15); color: white; font-weight: 500; }
+    .analyst-badge { display: flex; align-items: center; gap: 8px; margin-left: 8px; padding-left: 16px; border-left: 1px solid rgba(255,255,255,.2); font-size: 12px; color: rgba(255,255,255,.75); }
+    .analyst-badge button { background: none; border: none; color: rgba(255,255,255,.55); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+    .analyst-badge button:hover { color: white; }
+    .workspace { flex: 1; display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+    .case-list { background: var(--white); border-right: 1px solid var(--grey-200); display: flex; flex-direction: column; overflow: hidden; }
+    .case-list-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--grey-200); flex-shrink: 0; }
+    .case-list-header h2 { font-size: 12px; font-weight: 600; color: var(--grey-400); text-transform: uppercase; letter-spacing: .6px; }
+    .case-list-header .count { font-size: 11px; color: var(--grey-400); margin-top: 2px; }
+    #cases { overflow-y: auto; flex: 1; }
+    .case-item { padding: 12px 16px; border-bottom: 1px solid var(--grey-100); cursor: pointer; transition: background .12s; position: relative; }
+    .case-item:hover { background: var(--grey-50); }
+    .case-item.selected { background: var(--green-bg); border-left: 3px solid var(--green-dark); }
+    .case-item.selected .txn-id { color: var(--green-dark); }
+    .txn-id { font-size: 12px; font-weight: 600; color: var(--grey-700); font-family: 'Fira Mono', monospace; }
+    .txn-meta { font-size: 11px; color: var(--grey-400); margin-top: 3px; }
+    .txn-score { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-top: 5px; }
+    .txn-score.high { background: #FEE2E2; color: #DC2626; }
+    .txn-score.medium { background: #FEF3C7; color: #D97706; }
+    .txn-score.low { background: var(--green-bg); color: var(--green-dark); }
+    .indicators { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .ind-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--grey-100); color: var(--grey-600); }
+    .investigated-badge { position: absolute; top: 12px; right: 12px; font-size: 10px; color: var(--green-mid); }
+    .empty-cases { padding: 32px 16px; text-align: center; color: var(--grey-400); font-size: 13px; }
+    .investigation-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--grey-400); }
+    .empty-state .icon { font-size: 40px; } .empty-state p { font-size: 14px; } .empty-state small { font-size: 12px; }
+    #investigation-view { display: none; flex-direction: column; height: 100%; overflow: hidden; }
+    #investigation-view.visible { display: flex; }
+    .case-header { background: var(--white); border-bottom: 1px solid var(--grey-200); padding: 16px 24px; flex-shrink: 0; }
+    .case-header-top { display: flex; align-items: flex-start; justify-content: space-between; }
+    .case-header h2 { font-size: 15px; font-weight: 600; font-family: 'Fira Mono', monospace; }
+    .case-header .amount { font-size: 22px; font-weight: 700; color: var(--green-dark); margin-top: 2px; }
+    .case-header-meta { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--grey-600); }
+    .case-header-meta span { display: flex; align-items: center; gap: 4px; }
+    #run-btn { background: var(--green-dark); color: white; border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; white-space: nowrap; }
+    #run-btn:hover:not(:disabled) { background: var(--green-mid); }
+    #run-btn:disabled { background: var(--grey-200); color: var(--grey-400); cursor: not-allowed; }
+
+    #graph-body { flex: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; align-items: center; }
+    .graph-canvas { width: 100%; max-width: 680px; display: flex; flex-direction: column; align-items: center; }
+    .gmarker { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--grey-400); padding: 5px 16px; border-radius: 20px; background: var(--grey-100); border: 1px solid var(--grey-200); transition: all .5s; }
+    .gmarker.active { color: var(--green-dark); background: var(--green-bg); border-color: var(--green-mid); }
+    .gedge { width: 3px; height: 32px; background: var(--grey-200); position: relative; transition: background .6s ease; z-index: 1; }
+    .gedge.active { background: linear-gradient(180deg, var(--green-mid), var(--green-light)); box-shadow: 0 0 8px rgba(0,163,92,.35); }
+    .gedge::after { content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid var(--grey-200); transition: border-top-color .6s ease; }
+    .gedge.active::after { border-top-color: var(--green-light); }
+    .gedge .flow-dot { position: absolute; left: 50%; top: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--green-light); box-shadow: 0 0 6px var(--green-mid); transform: translateX(-50%); opacity: 0; }
+    .gedge.active .flow-dot { opacity: 1; animation: flow-down 1.5s linear infinite; }
+    @keyframes flow-down { 0% { top: 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+    .gnode { width: 380px; border-radius: 14px; border: 2px solid var(--grey-200); background: var(--white); padding: 18px 22px; text-align: center; position: relative; transition: all .5s cubic-bezier(.4,0,.2,1); z-index: 2; }
+    .gnode-header { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; }
+    .gnode-icon { font-size: 24px; transition: transform .5s; }
+    .gnode-title { font-size: 14px; font-weight: 600; color: var(--grey-700); }
+    .gnode-desc { font-size: 11px; color: var(--grey-400); line-height: 1.45; }
+    .gnode-status { margin-top: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--grey-400); }
+    .gnode.pending { opacity: .4; }
+    .gnode.running { border-color: var(--green-mid); background: linear-gradient(135deg, var(--green-bg), var(--white)); box-shadow: 0 0 0 4px rgba(0,163,92,.1), 0 4px 12px rgba(0,163,92,.08); opacity: 1; }
+    .gnode.running .gnode-icon { animation: pulse-icon 1.2s ease-in-out infinite; }
+    .gnode.running .gnode-status { color: var(--green-mid); }
+    .gnode.done { border-color: var(--green-dark); background: linear-gradient(135deg, var(--green-bg), var(--white)); opacity: 1; }
+    .gnode.done .gnode-icon { transform: scale(1.1); }
+    .gnode.done .gnode-status { color: var(--green-dark); }
+    .gnode.error { border-color: var(--red); background: var(--red-bg); opacity: 1; }
+    .gnode.error .gnode-status { color: var(--red); }
+    @keyframes pulse-icon { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+
+    .gtools { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+    .gtool { font-size: 11px; color: var(--grey-400); background: var(--grey-50); border: 1px solid var(--grey-100); border-radius: 7px; padding: 6px 12px; text-align: left; display: flex; align-items: center; gap: 7px; transition: all .4s; opacity: .35; }
+    .gtool.running { color: var(--green-dark); border-color: var(--green-mid); background: var(--green-bg); opacity: 1; box-shadow: 0 1px 4px rgba(0,163,92,.1); }
+    .gtool.done { color: var(--grey-600); border-color: var(--grey-200); opacity: .6; }
+    .gtool .gtool-icon { font-size: 13px; flex-shrink: 0; }
+    .gtool .gtool-check { margin-left: auto; color: var(--green-mid); font-size: 12px; opacity: 0; transition: opacity .3s; }
+    .gtool.done .gtool-check { opacity: 1; }
+
+    .gprogress-wrap { width: 380px; margin: 24px 0 8px; }
+    .gprogress-track { height: 7px; background: var(--grey-100); border-radius: 4px; overflow: hidden; }
+    .gprogress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--green-mid), var(--green-light)); border-radius: 4px; transition: width .7s cubic-bezier(.4,0,.2,1); }
+    .gprogress-label { font-size: 10px; color: var(--grey-400); text-align: center; margin-top: 6px; }
+
+    .gresult { width: 380px; margin-top: 16px; border-radius: 10px; border: 1px solid var(--grey-200); background: var(--white); padding: 14px 18px; display: none; }
+    .gresult.visible { display: block; animation: fadeIn .4s; }
+    .gresult-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--grey-400); margin-bottom: 8px; }
+    .gresult-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+    .gresult-row .k { color: var(--grey-400); }
+    .gresult-row .v { font-weight: 600; color: var(--grey-900); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .graph-empty { text-align: center; color: var(--grey-400); padding: 60px 20px; }
+    .graph-empty .icon { font-size: 48px; margin-bottom: 12px; }
+    .graph-empty p { font-size: 14px; margin-bottom: 4px; }
+    .graph-empty small { font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔬</div>
+  <h1>Fraud Detection &amp; Agent Demo <span style="color:rgba(255,255,255,.6);font-size:14px;font-weight:400">— Powered by MongoDB</span></h1>
+  <nav>
+    <a href="/simulate.html">Transaction Simulator</a>
+    <a href="/investigate.html">Fraud Investigator</a>
+    <a href="/graph.html" class="active">Investigation Graph</a>
+    <a href="/">Interactive Analyst</a>
+    <div class="analyst-badge" id="analyst-badge">
+      <span id="analyst-name"></span>
+      <button onclick="logoutAnalyst()" title="Log out">⏻</button>
+    </div>
+  </nav>
+</header>
+
+<div class="workspace">
+  <div class="case-list">
+    <div class="case-list-header">
+      <h2>Fraud Cases</h2>
+      <div class="count" id="case-count">Loading…</div>
+    </div>
+    <div id="cases"><div class="empty-cases">Loading cases…</div></div>
+  </div>
+
+  <div class="investigation-panel">
+    <div class="empty-state" id="empty-state">
+      <div class="icon">🔬</div>
+      <p>Select a fraud case to visualize the investigation</p>
+      <small>The graph shows the multi-agent flow from start to finish</small>
+    </div>
+
+    <div id="investigation-view">
+      <div class="case-header">
+        <div class="case-header-top">
+          <div>
+            <h2 id="hdr-txn-id"></h2>
+            <div class="amount" id="hdr-amount"></div>
+          </div>
+          <button id="run-btn" onclick="runInvestigation()">▶ Run Investigation</button>
+        </div>
+        <div class="case-header-meta" id="hdr-meta"></div>
+      </div>
+
+      <div id="graph-body">
+        <div class="graph-empty" id="graph-empty">
+          <div class="icon">🔬</div>
+          <p>Graph view shows the investigation flow diagram</p>
+          <small>Run an investigation to see the nodes light up in real time</small>
+        </div>
+        <div class="graph-canvas" id="graph-canvas" style="display:none">
+          <div class="gmarker" id="gmarker-start">START</div>
+          <div class="gedge" id="edge-start-mr"><div class="flow-dot"></div></div>
+
+          <div class="gnode pending" id="gnode-memory_retrieval">
+            <div class="gnode-header"><span class="gnode-icon">🧠</span><span class="gnode-title">Memory Retrieval</span></div>
+            <div class="gnode-desc">$vectorSearch on agent_memory — finds past lessons &amp; computes accuracy stat</div>
+            <div class="gnode-status" id="gstatus-memory_retrieval">PENDING</div>
+          </div>
+          <div class="gedge" id="edge-mr-inv"><div class="flow-dot"></div></div>
+
+          <div class="gnode pending" id="gnode-investigate">
+            <div class="gnode-header"><span class="gnode-icon">🔎</span><span class="gnode-title">Investigation Agent</span></div>
+            <div class="gnode-desc">Claude Sonnet — 4-tool agent with precedent brief</div>
+            <div class="gnode-status" id="gstatus-investigate">PENDING</div>
+            <div class="gtools">
+              <div class="gtool" id="gtool-fetch_fraud_transaction"><span class="gtool-icon">📋</span> Fetch fraud transaction<span class="gtool-check">✓</span></div>
+              <div class="gtool" id="gtool-fetch_user_history"><span class="gtool-icon">👤</span> Fetch user history<span class="gtool-check">✓</span></div>
+              <div class="gtool" id="gtool-search_similar_fraud_cases"><span class="gtool-icon">🔍</span> Search similar fraud cases<span class="gtool-check">✓</span></div>
+              <div class="gtool" id="gtool-submit_investigation_findings"><span class="gtool-icon">📝</span> Submit findings<span class="gtool-check">✓</span></div>
+            </div>
+          </div>
+          <div class="gedge" id="edge-inv-dec"><div class="flow-dot"></div></div>
+
+          <div class="gnode pending" id="gnode-decision">
+            <div class="gnode-header"><span class="gnode-icon">⚖️</span><span class="gnode-title">Decision Agent</span></div>
+            <div class="gnode-desc">Applies decision policy — writes findings to MongoDB + agent_memory</div>
+            <div class="gnode-status" id="gstatus-decision">PENDING</div>
+          </div>
+          <div class="gedge" id="edge-dec-end"><div class="flow-dot"></div></div>
+
+          <div class="gmarker" id="gmarker-end">END</div>
+
+          <div class="gprogress-wrap">
+            <div class="gprogress-track"><div class="gprogress-fill" id="gprogress-fill"></div></div>
+            <div class="gprogress-label" id="gprogress-label">Waiting to start…</div>
+          </div>
+
+          <div class="gresult" id="gresult">
+            <div class="gresult-title">Investigation Result</div>
+            <div class="gresult-row"><span class="k">Confidence</span><span class="v" id="gres-confidence">—</span></div>
+            <div class="gresult-row"><span class="k">Recommendation</span><span class="v" id="gres-recommendation">—</span></div>
+            <div class="gresult-row"><span class="k">Routed to human</span><span class="v" id="gres-routed">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let selectedCase = null;
+  let busy = false;
+
+  async function loadAnalyst() {
+    try {
+      const r = await fetch('/api/me');
+      if (r.status === 401) return (location.href = '/login.html');
+      const { name } = await r.json();
+      document.getElementById('analyst-name').textContent = name;
+    } catch {}
+  }
+  async function logoutAnalyst() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/login.html';
+  }
+  loadAnalyst();
+
+  async function loadCases() {
+    try {
+      const cases = await fetch('/api/fraud-transactions').then(r => r.json());
+      const el = document.getElementById('cases');
+      document.getElementById('case-count').textContent = cases.length + ' cases';
+      if (!cases.length) { el.innerHTML = '<div class="empty-cases">No fraud transactions found</div>'; return; }
+      el.innerHTML = cases.map((c, i) => '<div class="case-item" id="case-' + i + '" onclick="selectCase(' + i + ')">' +
+        (c.investigation?.investigated_at ? '<span class="investigated-badge">✓ done</span>' : '') +
+        '<div class="txn-id">' + c.transaction_id + '</div>' +
+        '<div class="txn-meta">' + c.user_id + ' · ' + (c.location?.city ?? '') + ', ' + (c.location?.country ?? '') + '</div>' +
+        '<div class="indicators">' + (c.fraud_indicators ?? []).map(ind => '<span class="ind-tag">' + ind + '</span>').join('') + '</div>' +
+        '<span class="txn-score ' + scoreClass(c.fraud_score) + '">Score ' + c.fraud_score + '</span></div>'
+      ).join('');
+      window._cases = cases;
+    } catch (e) {
+      document.getElementById('cases').innerHTML = '<div class="empty-cases">Failed to load: ' + e.message + '</div>';
+    }
+  }
+
+  function scoreClass(s) { if (s >= 80) return 'high'; if (s >= 50) return 'medium'; return 'low'; }
+
+  function selectCase(i) {
+    if (busy) return;
+    document.querySelectorAll('.case-item').forEach(el => el.classList.remove('selected'));
+    document.getElementById('case-' + i).classList.add('selected');
+    selectedCase = window._cases[i];
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('investigation-view').classList.add('visible');
+    document.getElementById('hdr-txn-id').textContent = selectedCase.transaction_id;
+    document.getElementById('hdr-amount').textContent = (selectedCase.currency ?? 'USD') + ' ' + Number(selectedCase.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+    document.getElementById('hdr-meta').innerHTML = [
+      selectedCase.merchant?.merchant_name ? '<span>🏪 ' + selectedCase.merchant.merchant_name + '</span>' : '',
+      selectedCase.location?.city ? '<span>📍 ' + selectedCase.location.city + ', ' + selectedCase.location.country + '</span>' : '',
+      selectedCase.device?.device_type ? '<span>📱 ' + selectedCase.device.device_type + ' · ' + (selectedCase.device.os ?? '') + '</span>' : '',
+      selectedCase.timestamp ? '<span>🕐 ' + new Date(selectedCase.timestamp).toLocaleString() + '</span>' : '',
+    ].join('');
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('run-btn').textContent = '▶ Run Investigation';
+    resetGraph();
+    const inv = selectedCase.investigation ?? {};
+    if (inv.investigated_at) renderExistingGraph(inv);
+  }
+
+  function resetGraph() {
+    document.getElementById('graph-empty').style.display = '';
+    document.getElementById('graph-canvas').style.display = 'none';
+    ['memory_retrieval','investigate','decision'].forEach(id => {
+      const el = document.getElementById('gnode-' + id); if (el) el.className = 'gnode pending';
+      const st = document.getElementById('gstatus-' + id); if (st) st.textContent = 'PENDING';
+    });
+    ['edge-start-mr','edge-mr-inv','edge-inv-dec','edge-dec-end'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+    ['fetch_fraud_transaction','fetch_user_history','search_similar_fraud_cases','submit_investigation_findings'].forEach(id => { const el = document.getElementById('gtool-' + id); if (el) el.className = 'gtool'; });
+    document.getElementById('gmarker-start').className = 'gmarker';
+    document.getElementById('gmarker-end').className = 'gmarker';
+    document.getElementById('gprogress-fill').style.width = '0%';
+    document.getElementById('gprogress-label').textContent = 'Waiting to start…';
+    document.getElementById('gresult').classList.remove('visible');
+  }
+
+  function showGraphCanvas() { document.getElementById('graph-empty').style.display = 'none'; document.getElementById('graph-canvas').style.display = 'flex'; }
+  function setNodeState(id, state, statusText) { const el = document.getElementById('gnode-' + id); if (!el) return; el.className = 'gnode ' + state; const st = document.getElementById('gstatus-' + id); if (st && statusText) st.textContent = statusText; }
+  function activateEdge(edgeId) { document.getElementById(edgeId)?.classList.add('active'); }
+  function setToolState(toolId, state) { const el = document.getElementById('gtool-' + toolId); if (!el) return; el.className = 'gtool ' + state; }
+  function setProgress(pct, label) { document.getElementById('gprogress-fill').style.width = pct + '%'; document.getElementById('gprogress-label').textContent = label; }
+  function showGraphResult(confidence, recommendation, routed) {
+    document.getElementById('gres-confidence').textContent = confidence ?? '—';
+    document.getElementById('gres-recommendation').textContent = recommendation ?? '—';
+    document.getElementById('gres-routed').textContent = routed ? 'Yes' : 'No';
+    document.getElementById('gresult').classList.add('visible');
+  }
+
+  function renderExistingGraph(inv) {
+    showGraphCanvas();
+    setNodeState('memory_retrieval','done','DONE'); setNodeState('investigate','done','DONE'); setNodeState('decision','done','DONE');
+    ['fetch_fraud_transaction','fetch_user_history','search_similar_fraud_cases','submit_investigation_findings'].forEach(id => setToolState(id,'done'));
+    ['edge-start-mr','edge-mr-inv','edge-inv-dec','edge-dec-end'].forEach(id => activateEdge(id));
+    document.getElementById('gmarker-start').className = 'gmarker active';
+    document.getElementById('gmarker-end').className = 'gmarker active';
+    setProgress(100, 'Investigation complete');
+    showGraphResult(inv.confidence, inv.recommendation, inv.routed_to_human);
+  }
+
+  function updateGraph(eventType, event) {
+    const tool = event.tool;
+    if (eventType === 'step_start') {
+      if (tool === 'memory_retrieval') {
+        activateEdge('edge-start-mr');
+        document.getElementById('gmarker-start').className = 'gmarker active';
+        setProgress(10, 'Retrieving precedents…');
+        setNodeState('memory_retrieval','running','RUNNING');
+      } else if (tool === 'decision') {
+        activateEdge('edge-inv-dec'); setProgress(80, 'Making decision…'); setNodeState('decision','running','RUNNING');
+      } else if (['fetch_fraud_transaction','fetch_user_history','search_similar_fraud_cases','submit_investigation_findings'].includes(tool)) {
+        const invNode = document.getElementById('gnode-investigate');
+        if (invNode && invNode.classList.contains('pending')) { activateEdge('edge-mr-inv'); setNodeState('investigate','running','RUNNING'); setProgress(25, 'Investigating…'); }
+        setToolState(tool, 'running');
+      }
+    }
+    if (eventType === 'step_done') {
+      if (tool === 'memory_retrieval') { setNodeState('memory_retrieval','done','DONE'); setProgress(20, 'Precedent brief ready'); }
+      else if (tool === 'decision') { setNodeState('decision','done','DONE'); activateEdge('edge-dec-end'); setProgress(100, 'Investigation complete'); document.getElementById('gmarker-end').className = 'gmarker active'; const r = event.result || {}; showGraphResult(r.confidence, r.recommendation, r.route_to_human); }
+      else if (['fetch_fraud_transaction','fetch_user_history','search_similar_fraud_cases','submit_investigation_findings'].includes(tool)) { setToolState(tool,'done'); const pm = {fetch_fraud_transaction:35,fetch_user_history:45,search_similar_fraud_cases:60,submit_investigation_findings:70}; if (pm[tool]) setProgress(pm[tool], tool.replace(/_/g,' ') + ' complete'); }
+      else if (tool === 'investigation_complete') { setNodeState('investigate','done','DONE'); setProgress(75, 'Investigation complete'); }
+    }
+    if (eventType === 'error') {
+      ['memory_retrieval','investigate','decision'].forEach(id => { const el = document.getElementById('gnode-' + id); if (el && el.classList.contains('running')) setNodeState(id,'error','ERROR'); });
+      setProgress(100, 'Error occurred');
+    }
+  }
+
+  async function runInvestigation() {
+    if (!selectedCase || busy) return;
+    busy = true;
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true; btn.textContent = '⟳ Investigating…';
+    resetGraph(); showGraphCanvas();
+    try {
+      const res = await fetch('/api/investigate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transaction_id: selectedCase.transaction_id }) });
+      if (res.status === 401) return (location.href = '/login.html');
+      const reader = res.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n'); buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event; try { event = JSON.parse(line.slice(6)); } catch { continue; }
+          if (event.type === 'step_start') updateGraph('step_start', event);
+          else if (event.type === 'step_done') updateGraph('step_done', event);
+          else if (event.type === 'error') updateGraph('error', event);
+          else if (event.type === 'done') break;
+        }
+      }
+      btn.textContent = '↺ Re-run Investigation';
+      loadCases().then(() => { const i = window._cases?.findIndex(c => c.transaction_id === selectedCase.transaction_id); if (i >= 0) document.getElementById('case-' + i)?.classList.add('selected'); });
+    } catch (e) { setProgress(100, 'Error: ' + e.message); btn.textContent = '↺ Retry'; }
+    busy = false; btn.disabled = false;
+  }
+
+  loadCases();
+</script>
+</body>
+</html>

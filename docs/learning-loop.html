@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>How the Learning Loop Works</title>
+<style>
+  @page { margin: 0.6in 0.7in; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #111827;
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+  .cover {
+    text-align: center;
+    padding: 80px 0 40px;
+    page-break-after: always;
+  }
+  .cover h1 {
+    font-size: 26pt;
+    color: #00684A;
+    margin-bottom: 8px;
+  }
+  .cover .subtitle {
+    font-size: 14pt;
+    color: #4B5563;
+    margin-bottom: 30px;
+  }
+  .cover .powered {
+    font-size: 11pt;
+    color: #9CA3AF;
+  }
+  .cover .date {
+    font-size: 10pt;
+    color: #9CA3AF;
+    margin-top: 50px;
+  }
+  h2 {
+    font-size: 16pt;
+    color: #00684A;
+    margin: 28px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #E5E7EB;
+  }
+  h3 {
+    font-size: 12.5pt;
+    color: #374151;
+    margin: 18px 0 6px;
+  }
+  p { margin: 6px 0; }
+  ul, ol { padding-left: 20px; margin: 6px 0; }
+  li { margin: 3px 0; }
+  code {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 9.5pt;
+    background: #F3F4F6;
+    color: #00684A;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 8.5pt;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    overflow-x: auto;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  pre code { background: none; color: #374151; padding: 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 9.5pt;
+  }
+  th {
+    background: #00684A;
+    color: white;
+    text-align: left;
+    padding: 6px 10px;
+    font-weight: 600;
+  }
+  td {
+    border: 1px solid #E5E7EB;
+    padding: 6px 10px;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #F9FAFB; }
+  .card {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 12px 0;
+  }
+  .card .card-title {
+    font-weight: 700;
+    color: #00684A;
+    margin-bottom: 4px;
+  }
+  .card-red {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+  }
+  .card-red .card-title { color: #DC2626; }
+  .card-amber {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+  }
+  .card-amber .card-title { color: #D97706; }
+  .pagebreak { page-break-before: always; }
+  .small { font-size: 9pt; color: #6B7280; }
+  .arrow { color: #00A35C; font-weight: bold; }
+  .diagram {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 8pt;
+    line-height: 1.4;
+    white-space: pre;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 14px;
+    margin: 12px 0;
+    overflow-x: auto;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 8pt;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-right: 4px;
+  }
+  .badge-green { background: #DCFCE7; color: #166534; }
+  .badge-red { background: #FEE2E2; color: #991B1B; }
+  .badge-amber { background: #FEF3C7; color: #92400E; }
+  .badge-blue { background: #DBEAFE; color: #1E40AF; }
+  .footer-note {
+    font-size: 8.5pt;
+    color: #9CA3AF;
+    margin-top: 30px;
+    border-top: 1px solid #E5E7EB;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- =========================== COVER =========================== -->
+<div class="cover">
+  <h1>How the Learning Loop Works</h1>
+  <div class="subtitle">Memory-Curated Investigation &amp; Feedback Cycle</div>
+  <div class="powered">Fraud Detection &amp; Multi-Agent System &mdash; Powered by MongoDB Atlas</div>
+  <div class="date">September 2026</div>
+</div>
+
+<!-- =========================== OVERVIEW =========================== -->
+<h2>Overview</h2>
+<p>
+The system has a <strong>closed-loop learning cycle</strong>: every human review of an AI
+investigation produces a searchable lesson that improves future investigations. The loop
+has two graphs that share a single MongoDB collection (<code>agent_memory</code>) as their
+memory substrate.
+</p>
+
+<div class="diagram">  INVESTIGATION CYCLE                          LEARNING CYCLE
+  (runs when a case is investigated)          (runs after human feedback)
+
+  START                                        START
+    |                                            |
+    v                                            v
+  memory_retrieval                             ingest
+    |  $vectorSearch on agent_memory            |  read case + compare
+    |  2 parallel searches:                     |  agent vs human conclusion
+    |  - human_confirmed only                   |  -> agreement: true/false
+    |  - all memories                           |
+    v                                            v
+  investigate                                  synthesize
+    |  Claude agent with 4 tools                |  Claude generates a 2-4
+    |  receives precedent brief as input        |  sentence reusable lesson
+    |  -> findings + confidence + recommend     |  based on what went right
+    v                                            |  or wrong
+  decide                                       v
+    |  Claude applies decision policy           write_lesson
+    |  accuracy stat < 60% -> force escalate     |  insert lesson_learned to
+    |  accuracy >= 75% -> allow auto-close       |  agent_memory
+    |  writes to fraud_transactions +            |  autoEmbed indexes it
+    |  agent_memory                              |  automatically (voyage-4)
+    v                                            v
+  END                                          END
+
+         <span class="arrow">&lt;─────────── agent_memory collection (shared) ───────────&gt;</span>
+         <span class="arrow">&lt;──── autoEmbed vector index on summary field (voyage-4) ──&gt;</span>
+</div>
+
+<!-- =========================== THE THREE AGENT TYPES =========================== -->
+<h2>The Agents</h2>
+
+<table>
+  <tr>
+    <th>Agent</th>
+    <th>Graph</th>
+    <th>LLM?</th>
+    <th>Role in the learning loop</th>
+  </tr>
+  <tr>
+    <td><strong>Memory Retrieval</strong></td>
+    <td>Investigation</td>
+    <td>No</td>
+    <td>Reads <code>agent_memory</code> via <code>$vectorSearch</code>. Finds past lessons and computes the accuracy stat. Builds the precedent brief that the investigator reads.</td>
+  </tr>
+  <tr>
+    <td><strong>Investigation</strong></td>
+    <td>Investigation</td>
+    <td>Yes</td>
+    <td>Claude agent. Receives the precedent brief as input. Investigates the case with 4 tools. Produces findings, confidence, and a recommendation.</td>
+  </tr>
+  <tr>
+    <td><strong>Decision</strong></td>
+    <td>Investigation</td>
+    <td>Yes</td>
+    <td>Claude agent. Applies a decision policy that uses the accuracy stat. Writes findings to <code>fraud_transactions</code> and an <code>investigation_summary</code> to <code>agent_memory</code>.</td>
+  </tr>
+  <tr>
+    <td><strong>Outcome Ingest</strong></td>
+    <td>Learning</td>
+    <td>No</td>
+    <td>Reads the investigated case. Compares what the agent concluded vs. what the human decided. Produces an <code>agreement</code> boolean.</td>
+  </tr>
+  <tr>
+    <td><strong>Memory Synthesis</strong></td>
+    <td>Learning</td>
+    <td>Yes</td>
+    <td>Claude agent. Generates a concise, reusable lesson from the case outcome. Agreement &rarr; "confirmed pattern" lesson. Disagreement &rarr; "correction" lesson.</td>
+  </tr>
+  <tr>
+    <td><strong>Memory Write</strong></td>
+    <td>Learning</td>
+    <td>No</td>
+    <td>Builds a <code>lesson_learned</code> document and inserts it into <code>agent_memory</code>. Atlas autoEmbed indexes it automatically.</td>
+  </tr>
+</table>
+
+<!-- =========================== AGENT_MEMORY DOCUMENT TYPES =========================== -->
+<h2 class="pagebreak">The <code>agent_memory</code> Collection</h2>
+<p>
+All memory lives in a single MongoDB collection with an autoEmbed vector index on the
+<code>summary</code> field (model: <code>voyage-4</code>). Three document types coexist:
+</p>
+
+<h3>Document type 1: <code>investigation_summary</code></h3>
+<p>Written by the Decision Agent after every investigation. This is the agent's own unverified conclusion.</p>
+<pre><code>{
+  "type": "investigation_summary",
+  "transaction_id": "txn_A",
+  "summary": "Flagged as fraud: high amount ($4,800) from Nigeria on new device...",
+  "source": "agent",
+  "outcome": "escalated",
+  "tags": ["high_amount", "new_device"]
+}</code></pre>
+<p class="small">
+  <span class="badge badge-amber">source: agent</span>
+  Treat as prior reasoning, not fact. A human has not verified this yet.
+</p>
+
+<h3>Document type 2: <code>analyst_feedback</code></h3>
+<p>Written by the feedback endpoint when a human submits a verdict. This is the raw audit trail.</p>
+<pre><code>{
+  "type": "analyst_feedback",
+  "transaction_id": "txn_A",
+  "summary": "Human analyst reviewed transaction txn_A and confirmed outcome: false_positive...",
+  "source": "human_confirmed",
+  "outcome": "false_positive",
+  "reviewed_by": "analyst@email.com"
+}</code></pre>
+<p class="small">
+  <span class="badge badge-green">source: human_confirmed</span>
+  Ground truth &mdash; a human verified this outcome.
+</p>
+
+<h3>Document type 3: <code>lesson_learned</code> <span class="badge badge-blue">key output of the learning graph</span></h3>
+<p>Written by the Learning Graph after synthesizing the human's feedback. This is the reusable lesson.</p>
+<pre><code>{
+  "type": "lesson_learned",
+  "transaction_id": "txn_A",
+  "summary": "For transactions with [new_device] where the user has 3+ years
+             of clean history and the device is the same OS as their previous
+             device, the agent flagged this but it was a false positive. Key
+             insight: check if the new device is an upgrade before flagging.",
+  "source": "human_confirmed",
+  "lesson_type": "false_positive_lesson",
+  "agreement": false,
+  "indicators": ["high_amount", "new_device"],
+  "outcome": "false_positive",
+  "agent_conclusion": "flagged_as_fraud",
+  "human_conclusion": "false_positive"
+}</code></pre>
+<p class="small">
+  <span class="badge badge-green">source: human_confirmed</span>
+  <span class="badge badge-red">agreement: false</span>
+  The agent was wrong. The lesson explains why so future investigations avoid the same mistake.
+</p>
+
+<div class="card">
+  <div class="card-title">The Trust Gradient</div>
+  <p>
+    The <code>source</code> field creates a trust gradient. The Memory Retrieval Agent
+    runs two parallel vector searches: one filtered to <code>source: "human_confirmed"</code>
+    (ground truth), one unfiltered (all precedent including unverified agent conclusions).
+    The system prompt coaches the investigation agent: "Prefer results with
+    <code>source: "human_confirmed"</code> as ground truth; treat <code>source: "agent"</code>
+    results as unverified prior reasoning."
+  </p>
+</div>
+
+<!-- =========================== STEP BY STEP: FIRST INVESTIGATION =========================== -->
+<h2 class="pagebreak">Walkthrough: Three Investigations</h2>
+
+<h3>Investigation #1 &mdash; <span class="badge badge-amber">no lessons yet</span></h3>
+<p>A new case <code>txn_A</code> is flagged with indicators <code>[high_amount, new_device]</code>.</p>
+
+<ol>
+  <li><strong>Memory Retrieval Agent</strong> runs <code>$vectorSearch</code> on <code>agent_memory</code>. No <code>lesson_learned</code> documents exist &rarr; the precedent brief is empty.</li>
+  <li><strong>Investigation Agent</strong> investigates with no prior context. All indicators fire &rarr; <code>confidence: "high"</code>, <code>recommendation: "escalate"</code>.</li>
+  <li><strong>Decision Agent</strong> writes findings to <code>fraud_transactions.investigation</code> and an <code>investigation_summary</code> to <code>agent_memory</code> with <code>source: "agent"</code>.</li>
+  <li><strong>Human</strong> clicks "False positive" in the UI.</li>
+  <li><strong>Learning Graph</strong> runs:
+    <ul>
+      <li><code>ingestOutcome</code> reads the case: agent said fraud, human said false_positive &rarr; <code>agreement: false</code></li>
+      <li><code>synthesizeLesson</code> (Claude) generates: <em>"For transactions with [new_device] where the user has 3+ years of clean history and the device is the same OS, the agent flagged this but it was a false positive. Check if the new device is an upgrade before flagging."</em></li>
+      <li><code>write_lesson</code> inserts a <code>lesson_learned</code> document to <code>agent_memory</code>. autoEmbed indexes it automatically.</li>
+    </ul>
+  </li>
+</ol>
+
+<div class="card card-red">
+  <div class="card-title">After Investigation #1</div>
+  <p><code>agent_memory</code> now has 1 <code>lesson_learned</code> doc (false_positive_lesson, agreement=false).</p>
+  <p>Accuracy stat for [high_amount, new_device]: <strong>0% (0 of 1 agreed)</strong></p>
+</div>
+
+<h3 class="pagebreak">Investigation #2 &mdash; <span class="badge badge-blue">1 lesson in memory</span></h3>
+<p>A similar case <code>txn_B</code> is flagged with the same indicators <code>[high_amount, new_device]</code>.</p>
+
+<ol>
+  <li><strong>Memory Retrieval Agent</strong> runs <code>$vectorSearch</code>. Now finds the lesson from Investigation #1:
+    <ul>
+      <li><strong>Verified search</strong> (filtered to <code>human_confirmed</code>): finds the <code>lesson_learned</code> doc &rarr; places it under "CONFIRMED FALSE-POSITIVE PRECEDENTS"</li>
+      <li><strong>Accuracy stat</strong>: <code>$match</code> + <code>$group</code> on <code>lesson_learned</code> docs with <code>indicators: { $all: ["high_amount", "new_device"] }</code> &rarr; returns <code>{ total: 1, agreed: 0, rate: 0 }</code></li>
+    </ul>
+  </li>
+  <li><strong>Investigation Agent</strong> receives this brief:
+<pre>CONFIRMED FALSE-POSITIVE PRECEDENTS (human-verified):
+1. txn_A &mdash; For transactions with [new_device] where the user has
+   3+ years of clean history and the device is the same OS, the agent
+   flagged this but it was a false positive. Check if the new device
+   is an upgrade before flagging.
+
+ACCURACY STAT: 0% (0 of 1 agreed)</pre>
+    The agent now checks: is this device an upgrade of the same OS? If yes, it might lower its confidence. If the location is unusual (e.g., Nigeria) and the user has no travel history, it might still flag &rarr; <code>confidence: "high"</code>, <code>recommendation: "escalate"</code>.
+  </li>
+  <li><strong>Decision Agent</strong> sees accuracy = 0% (&lt; 60%) &rarr; <strong>forces human escalation</strong> regardless of confidence.</li>
+  <li><strong>Human</strong> clicks "Confirm fraud" &mdash; this one was real fraud.</li>
+  <li><strong>Learning Graph</strong> runs: <code>agreement: true</code> &rarr; writes a <code>confirmed_fraud_lesson</code>.</li>
+</ol>
+
+<div class="card">
+  <div class="card-title">After Investigation #2</div>
+  <p><code>agent_memory</code> now has 2 <code>lesson_learned</code> docs:</p>
+  <ul>
+    <li><span class="badge badge-red">false_positive_lesson</span> from txn_A (agreement=false)</li>
+    <li><span class="badge badge-green">confirmed_fraud_lesson</span> from txn_B (agreement=true)</li>
+  </ul>
+  <p>Accuracy stat for [high_amount, new_device]: <strong>50% (1 of 2 agreed)</strong></p>
+</div>
+
+<h3 class="pagebreak">Investigation #3 &mdash; <span class="badge badge-blue">2 lessons in memory</span></h3>
+<p>Another case <code>txn_C</code> with the same indicators.</p>
+
+<ol>
+  <li><strong>Memory Retrieval Agent</strong> runs <code>$vectorSearch</code>. Both lessons match:
+    <ul>
+      <li><strong>Confirmed fraud precedents</strong>: txn_B's lesson ("new device + Nigeria IP + no travel history = account takeover")</li>
+      <li><strong>Confirmed false-positive precedents</strong>: txn_A's lesson ("same OS upgrade + long history = false positive")</li>
+      <li><strong>Accuracy stat</strong>: 50% (1 of 2 agreed)</li>
+    </ul>
+  </li>
+  <li><strong>Investigation Agent</strong> now has <strong>both sides of the story</strong>:
+<pre>CONFIRMED FRAUD PRECEDENTS (human-verified):
+1. txn_B &mdash; new device + high amount + Nigeria IP with no travel
+   history = confirmed account takeover fraud.
+
+CONFIRMED FALSE-POSITIVE PRECEDENTS (human-verified):
+1. txn_A &mdash; new device where user has 3+ years of clean history
+   and device is same OS = false positive. Check if device is an
+   upgrade before flagging.
+
+ACCURACY STAT: 50% (1 of 2 agreed)</pre>
+    The agent can now distinguish between the two sub-patterns:
+    <ul>
+      <li>Same OS + long history &rarr; likely false positive (lesson from txn_A)</li>
+      <li>Different OS + unusual location + no travel history &rarr; likely fraud (lesson from txn_B)</li>
+    </ul>
+  </li>
+  <li><strong>Decision Agent</strong> sees accuracy = 50% (&lt; 60%) &rarr; still forces human escalation. The system knows it's unreliable on this pattern.</li>
+</ol>
+
+<div class="card card-amber">
+  <div class="card-title">After Investigation #3 (before feedback)</div>
+  <p>The investigation agent has a <strong>decision tree</strong> it wouldn't have without the lessons. It can tell the human analyst:</p>
+  <p><em>"This case resembles txn_B (confirmed fraud) more than txn_A (false positive) because the location is unusual and the device is a different OS. However, my accuracy on this pattern is only 50%, so I'm escalating for human review."</em></p>
+</div>
+
+<!-- =========================== ACCURACY STAT SCALING =========================== -->
+<h2 class="pagebreak">How the Accuracy Stat Scales</h2>
+
+<p>
+The accuracy stat is computed per indicator combination. The aggregation matches
+<code>lesson_learned</code> documents where <code>indicators</code> includes all the current
+case's indicators, then counts how many had <code>agreement: true</code>.
+</p>
+
+<pre><code>// computeAccuracyStat() in memory-retrieval-agent.js
+{ $match: { type: "lesson_learned", source: "human_confirmed" } },
+{ $match: { indicators: { $all: ["high_amount", "new_device"] } } },
+{ $group: { _id: null, total: { $sum: 1 }, agreed: { $sum: { $cond: ["$agreement", 1, 0] } } } }</code></pre>
+
+<table>
+  <tr>
+    <th>After N feedbacks</th>
+    <th>Agreed</th>
+    <th>Accuracy</th>
+    <th>Decision Agent behavior</th>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>0</td>
+    <td>0%</td>
+    <td><span class="badge badge-red">Force escalation</span> (&lt; 60%)</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>1</td>
+    <td>50%</td>
+    <td><span class="badge badge-red">Force escalation</span> (&lt; 60%)</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>2</td>
+    <td>67%</td>
+    <td><span class="badge badge-amber">Follow recommendation</span> (60&ndash;75%)</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td>4</td>
+    <td>80%</td>
+    <td><span class="badge badge-green">Allow auto-close</span> if confidence is high (&ge; 75%)</td>
+  </tr>
+  <tr>
+    <td>10</td>
+    <td>9</td>
+    <td>90%</td>
+    <td><span class="badge badge-green">Allow auto-close</span> if confidence is high (&ge; 75%)</td>
+  </tr>
+</table>
+
+<p class="small">
+  Each indicator combination has its own independent track record.
+  <code>[high_amount, new_device]</code> might be at 80% while
+  <code>[unusual_location, new_device]</code> is at 30% &mdash; the system learns
+  separately for each fraud pattern type.
+</p>
+
+<!-- =========================== DECISION POLICY =========================== -->
+<h2>The Decision Agent's Policy</h2>
+
+<p>The Decision Agent receives the accuracy stat in its context and applies these rules:</p>
+
+<div class="card">
+  <div class="card-title">Decision Rules</div>
+  <ul>
+    <li><strong>Accuracy &lt; 60%</strong> &rarr; always escalate to human, regardless of confidence or recommendation. The agent is frequently wrong on this pattern.</li>
+    <li><strong>Accuracy &ge; 75% AND confidence = "high" AND recommendation = "auto_close"</strong> &rarr; auto-close the case. The agent is reliable on this pattern.</li>
+    <li><strong>Confidence = "medium" or "low"</strong> &rarr; always escalate, regardless of accuracy.</li>
+    <li><strong>Confidence = "high" AND recommendation = "escalate"</strong> &rarr; escalate to human.</li>
+    <li><strong>No accuracy stat</strong> (insufficient history) &rarr; follow the recommendation but lean toward escalation.</li>
+  </ul>
+</div>
+
+<p>This means the system <strong>adjusts its own autonomy threshold</strong> based on past performance. Patterns where the agent is frequently wrong get forced to human review. Patterns where it's consistently right can be auto-closed without human intervention.</p>
+
+<!-- =========================== MONGODB INTEGRATION =========================== -->
+<h2 class="pagebreak">MongoDB Integration</h2>
+
+<h3>autoEmbed &mdash; no client-side embedding</h3>
+<p>
+The <code>agent_memory</code> collection has an autoEmbed vector index on the <code>summary</code>
+field using the <code>voyage-4</code> model. Atlas generates and stores embeddings at write time.
+At query time, <code>$vectorSearch</code> accepts plain text &mdash; no Voyage API key in the
+application, no client-side embedding call.
+</p>
+
+<pre><code>// Index definition (indexes/agent_memory_text_index.json)
+{
+  "fields": [{
+    "modality": "text",
+    "model": "voyage-4",
+    "path": "summary",
+    "type": "autoEmbed"
+  }]
+}</code></pre>
+
+<h3>Two parallel vector searches in the Memory Retrieval Agent</h3>
+<pre><code>// Search 1: human-confirmed only (ground truth)
+{ $vectorSearch: { index: "agent_memory_text_index", path: "summary",
+    query: queryText, numCandidates: 50, limit: 10, model: "voyage-4" } },
+{ $match: { source: "human_confirmed" } },
+{ $limit: 6 }
+
+// Search 2: all memories (including unverified agent conclusions)
+{ $vectorSearch: { index: "agent_memory_text_index", path: "summary",
+    query: queryText, numCandidates: 50, limit: 10, model: "voyage-4" } },
+{ $limit: 6 }</code></pre>
+
+<p>The verified results are split into confirmed-fraud and confirmed-false-positive precedents.
+The unverified results provide additional context (prior agent reasoning).</p>
+
+<h3>Accuracy stat aggregation</h3>
+<pre><code>{ $match: { type: "lesson_learned", source: "human_confirmed" } },
+{ $match: { indicators: { $all: indicators } } },
+{ $group: { _id: null, total: { $sum: 1 }, agreed: { $sum: { $cond: ["$agreement", 1, 0] } } } }</code></pre>
+
+<p>This runs as a standard MongoDB aggregation &mdash; not a vector search. It counts
+<code>lesson_learned</code> documents matching the current case's indicators and computes
+what percentage had <code>agreement: true</code>.</p>
+
+<!-- =========================== COMPOUNDING EFFECT =========================== -->
+<h2 class="pagebreak">The Compounding Effect</h2>
+
+<p>Each human review adds one <code>lesson_learned</code> document. The benefits compound across three dimensions:</p>
+
+<h3>1. Richer precedent briefs</h3>
+<p>
+With 5 confirmed-fraud precedents and 3 false-positive precedents, the investigation agent
+has a nuanced picture of when a pattern is real vs. benign. Contradictory lessons for the
+same indicators aren't a conflict &mdash; they're a <strong>decision boundary</strong>. The
+agent learns to distinguish which sub-pattern leads to which outcome.
+</p>
+
+<h3>2. More reliable accuracy stat</h3>
+<p>
+With 10+ data points per indicator combination, the stat is statistically meaningful.
+The Decision Agent's threshold-based policy (60% / 75%) becomes a real guardrail:
+patterns where the agent is frequently wrong get forced to human review, while patterns
+where it's consistently right can be auto-closed.
+</p>
+
+<h3>3. Semantic cross-pollination</h3>
+<p>
+<code>$vectorSearch</code> is semantic, not exact-match. A lesson about
+<code>[new_device]</code> from a user with 5 years of history might surface for a
+<code>[high_amount, new_device]</code> case if the summary text is semantically similar
+&mdash; even though the indicator arrays aren't identical. This means lessons from one
+pattern type can inform investigations of related patterns.
+</p>
+
+<div class="card">
+  <div class="card-title">The Learning Loop in One Sentence</div>
+  <p>
+    Every human review produces a vector-searchable lesson that becomes part of the
+    precedent brief for the next investigation, and an accuracy stat that controls whether
+    the Decision Agent trusts itself or escalates to a human &mdash; so the system gets
+    smarter with every case and knows its own limits.
+  </p>
+</div>
+
+<div class="footer-note">
+  Fraud Detection &amp; Multi-Agent System &mdash; Powered by MongoDB Atlas<br>
+  LangGraph state graphs &middot; Claude Sonnet 4 &middot; Atlas Vector Search (autoEmbed / voyage-4) &middot; Atlas Stream Processing
+</div>
+
+</body>
+</html>
