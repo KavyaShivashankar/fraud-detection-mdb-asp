@@ -139,6 +139,89 @@
     .gedge.human-edge.active::after { border-top-color: var(--green-mid); }
     .gedge.human-edge .flow-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
     .gedge.human-edge.active .flow-dot { background: var(--green-light); box-shadow: 0 0 6px var(--green-mid); }
+
+    /* Learning cycle nodes */
+    .gnode.learning { border-color: var(--amber); }
+    .gnode.learning.running { border-color: var(--amber); background: linear-gradient(135deg, var(--amber-bg), var(--white)); box-shadow: 0 0 0 4px rgba(217,119,6,.1); }
+    .gnode.learning.running .gnode-status { color: var(--amber); }
+    .gnode.learning.done { border-color: var(--green-dark); background: linear-gradient(135deg, var(--green-bg), var(--white)); }
+    .gnode.learning.done .gnode-status { color: var(--green-dark); }
+    .gedge.learning-edge { background: var(--grey-200); }
+    .gedge.learning-edge.active { background: linear-gradient(180deg, var(--amber), var(--green-mid)); }
+    .gedge.learning-edge.active::after { border-top-color: var(--green-mid); }
+    .gedge.learning-edge .flow-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .gedge.learning-edge.active .flow-dot { background: var(--green-light); box-shadow: 0 0 6px var(--green-mid); }
+
+    /* Learning cycle section label */
+    .gsection-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.5px; color: var(--grey-400);
+      margin: 28px 0 8px; padding: 6px 16px;
+      border-radius: 20px; background: var(--grey-100);
+      border: 1px solid var(--grey-200);
+    }
+    .gsection-label.active { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+    .gsection-label.done { color: var(--green-dark); border-color: var(--green-dark); background: var(--green-bg); }
+
+    /* Feedback loop arrow */
+    .gfeedback-loop {
+      width: 380px; margin: 16px 0 8px; padding: 12px 16px;
+      border: 2px dashed var(--green-mid); border-radius: 10px;
+      background: var(--green-bg); text-align: center;
+      font-size: 11px; color: var(--green-dark); display: none;
+    }
+    .gfeedback-loop.visible { display: block; animation: fadeIn .5s; }
+    .gfeedback-loop .loop-icon { font-size: 16px; margin-right: 4px; }
+
+    /* Lesson preview card */
+    .glesson {
+      width: 380px; margin-top: 12px; border-radius: 10px;
+      border: 1px solid var(--grey-200); background: var(--white);
+      padding: 14px 18px; display: none;
+    }
+    .glesson.visible { display: block; animation: fadeIn .4s; }
+    .glesson-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--grey-400); margin-bottom: 8px;
+    }
+    .glesson-body {
+      font-size: 12px; color: var(--grey-700); line-height: 1.6;
+    }
+    .glesson-type {
+      display: inline-block; font-size: 10px; font-weight: 600;
+      padding: 2px 7px; border-radius: 4px; margin-bottom: 6px;
+    }
+    .glesson-type.confirmed { background: #FEE2E2; color: #991B1B; }
+    .glesson-type.correction { background: #FEF3C7; color: #92400E; }
+
+    /* Accuracy gauge */
+    .ggauge {
+      width: 380px; margin-top: 16px; border-radius: 10px;
+      border: 1px solid var(--grey-200); background: var(--white);
+      padding: 16px 18px; display: none;
+    }
+    .ggauge.visible { display: block; animation: fadeIn .4s; }
+    .ggauge-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--grey-400); margin-bottom: 10px;
+    }
+    .ggauge-bar-wrap { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .ggauge-bar-track {
+      flex: 1; height: 24px; background: var(--grey-100);
+      border-radius: 12px; overflow: hidden; position: relative;
+    }
+    .ggauge-bar-fill {
+      height: 100%; border-radius: 12px;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: white;
+    }
+    .ggauge-bar-fill.high { background: linear-gradient(90deg, var(--green-mid), var(--green-light)); }
+    .ggauge-bar-fill.medium { background: linear-gradient(90deg, #D97706, #FBBF24); }
+    .ggauge-bar-fill.low { background: linear-gradient(90deg, #DC2626, #F87171); }
+    .ggauge-bar-fill.none { background: var(--grey-200); color: var(--grey-400); }
+    .ggauge-detail { font-size: 11px; color: var(--grey-400); }
+    .ggauge-detail strong { color: var(--grey-700); }
   </style>
 </head>
 <body>
@@ -251,6 +334,53 @@
             <div class="gresult-row"><span class="k">Recommendation</span><span class="v" id="gres-recommendation">—</span></div>
             <div class="gresult-row"><span class="k">Routed to human</span><span class="v" id="gres-routed">—</span></div>
           </div>
+
+          <!-- Learning cycle section -->
+          <div class="gsection-label" id="learning-section-label" style="display:none">Learning Cycle</div>
+          <div class="gedge learning-edge" id="edge-human-ingest" style="display:none"><div class="flow-dot"></div></div>
+
+          <div class="gnode learning pending" id="gnode-ingest" style="display:none">
+            <div class="gnode-header"><span class="gnode-icon">📖</span><span class="gnode-title">Ingest</span></div>
+            <div class="gnode-desc">Reads case + compares agent vs human conclusion</div>
+            <div class="gnode-status" id="gstatus-ingest">PENDING</div>
+          </div>
+          <div class="gedge learning-edge" id="edge-ingest-synth" style="display:none"><div class="flow-dot"></div></div>
+
+          <div class="gnode learning pending" id="gnode-synthesize" style="display:none">
+            <div class="gnode-header"><span class="gnode-icon">✨</span><span class="gnode-title">Synthesize</span></div>
+            <div class="gnode-desc">Claude generates a reusable lesson from the outcome</div>
+            <div class="gnode-status" id="gstatus-synthesize">PENDING</div>
+          </div>
+          <div class="gedge learning-edge" id="edge-synth-write" style="display:none"><div class="flow-dot"></div></div>
+
+          <div class="gnode learning pending" id="gnode-write_lesson" style="display:none">
+            <div class="gnode-header"><span class="gnode-icon">💾</span><span class="gnode-title">Write Lesson</span></div>
+            <div class="gnode-desc">Saves lesson_learned to agent_memory (autoEmbed indexed)</div>
+            <div class="gnode-status" id="gstatus-write_lesson">PENDING</div>
+          </div>
+
+          <!-- Feedback loop arrow -->
+          <div class="gfeedback-loop" id="gfeedback-loop">
+            <span class="loop-icon">↻</span> Lessons feed back into Memory Retrieval on the next investigation via $vectorSearch
+          </div>
+
+          <!-- Lesson preview -->
+          <div class="glesson" id="glesson">
+            <div class="glesson-title">🧠 Lesson Learned</div>
+            <div id="glesson-type-badge"></div>
+            <div class="glesson-body" id="glesson-body"></div>
+          </div>
+
+          <!-- Accuracy gauge -->
+          <div class="ggauge" id="ggauge">
+            <div class="ggauge-title">📊 Agent Accuracy for These Indicators</div>
+            <div class="ggauge-bar-wrap">
+              <div class="ggauge-bar-track">
+                <div class="ggauge-bar-fill none" id="ggauge-bar" style="width:0%">—</div>
+              </div>
+            </div>
+            <div class="ggauge-detail" id="ggauge-detail">No human reviews yet for these indicators</div>
+          </div>
         </div>
       </div>
     </div>
@@ -338,6 +468,7 @@
     const hrNode = document.getElementById('gnode-human_review'); if (hrNode) { hrNode.className = 'gnode pending'; hrNode.style.display = 'none'; }
     const hrEdge = document.getElementById('edge-end-human'); if (hrEdge) { hrEdge.classList.remove('active'); hrEdge.style.display = 'none'; }
     const hrSt = document.getElementById('gstatus-human_review'); if (hrSt) hrSt.textContent = 'PENDING';
+    hideLearningCycle();
   }
 
   function showGraphCanvas() { document.getElementById('graph-empty').style.display = 'none'; document.getElementById('graph-canvas').style.display = 'flex'; }
@@ -362,6 +493,7 @@
     setProgress(100, 'Investigation complete');
     showGraphResult(inv.confidence, inv.recommendation, inv.routed_to_human);
     if (inv.routed_to_human || inv.human_outcome) { showHumanReview(inv); }
+    if (inv.human_outcome) { renderExistingLearningCycle(selectedCase.transaction_id); }
   }
 
   function showHumanReview(inv) {
@@ -465,23 +597,183 @@
       });
       if (!res.ok) throw new Error((await res.json()).error || 'HTTP ' + res.status);
       var isFraud = outcome === 'confirmed_fraud';
-      btns.innerHTML = '<span class="gfeedback-recorded">' + (isFraud ? '🔴 Analyst confirmed: fraud' : '✅ Analyst confirmed: false positive') + ' · 🧠 Learning…</span>';
-      document.getElementById('learning-indicator').style.display = '';
+      btns.innerHTML = '<span class="gfeedback-recorded">' + (isFraud ? 'uD83DuDD34 Analyst confirmed: fraud' : 'u2705 Analyst confirmed: false positive') + '</span>';
+      document.getElementById('learning-indicator').style.display = 'none';
       setNodeState('human_review', 'done', 'REVIEWED');
-      loadCases().then(function() {
-        var i = window._cases ? window._cases.findIndex(function(c) { return c.transaction_id === selectedCase.transaction_id; }) : -1;
-        if (i >= 0) {
-          var caseEl = document.getElementById('case-' + i);
-          if (caseEl) caseEl.classList.add('selected');
-          selectedCase = window._cases[i];
-          var inv = selectedCase.investigation || {};
-          if (inv.investigated_at) renderExistingGraph(inv);
-        }
-      });
+      animateLearningCycle(selectedCase.transaction_id);
     } catch (e) {
       btns.querySelectorAll('button').forEach(function(b) { b.disabled = false; });
       alert('Failed to record feedback: ' + e.message);
     }
+  }
+
+
+  // ── Learning cycle functions ─────────────────────────────────────────────
+  function showLearningCycle() {
+    document.getElementById('learning-section-label').style.display = '';
+    document.getElementById('learning-section-label').className = 'gsection-label active';
+    ['gnode-ingest','gnode-synthesize','gnode-write_lesson'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) { el.style.display = ''; el.className = 'gnode learning pending'; }
+    });
+    ['edge-human-ingest','edge-ingest-synth','edge-synth-write'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) { el.style.display = ''; }
+    });
+    ['gstatus-ingest','gstatus-synthesize','gstatus-write_lesson'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.textContent = 'PENDING';
+    });
+    document.getElementById('gfeedback-loop').classList.remove('visible');
+    document.getElementById('glesson').classList.remove('visible');
+    document.getElementById('ggauge').classList.remove('visible');
+  }
+
+  function hideLearningCycle() {
+    document.getElementById('learning-section-label').style.display = 'none';
+    ['gnode-ingest','gnode-synthesize','gnode-write_lesson'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    ['edge-human-ingest','edge-ingest-synth','edge-synth-write'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) { el.style.display = 'none'; el.classList.remove('active'); }
+    });
+    document.getElementById('gfeedback-loop').classList.remove('visible');
+    document.getElementById('glesson').classList.remove('visible');
+    document.getElementById('ggauge').classList.remove('visible');
+  }
+
+  function setLearningNodeState(id, state, statusText) {
+    var el = document.getElementById('gnode-' + id);
+    if (!el) return;
+    el.className = 'gnode learning ' + state;
+    var st = document.getElementById('gstatus-' + id);
+    if (st && statusText) st.textContent = statusText;
+  }
+
+  function activateLearningEdge(edgeId) {
+    document.getElementById(edgeId)?.classList.add('active');
+  }
+
+  function renderLessonComplete(lesson) {
+    setLearningNodeState('ingest', 'done', 'DONE');
+    setLearningNodeState('synthesize', 'done', 'DONE');
+    setLearningNodeState('write_lesson', 'done', 'DONE');
+    ['edge-human-ingest','edge-ingest-synth','edge-synth-write'].forEach(function(id) { activateLearningEdge(id); });
+    document.getElementById('learning-section-label').className = 'gsection-label done';
+
+    // Show feedback loop
+    document.getElementById('gfeedback-loop').classList.add('visible');
+
+    // Show lesson preview
+    if (lesson && lesson.summary) {
+      var typeEl = document.getElementById('glesson-type-badge');
+      var isConfirmed = lesson.lesson_type === 'confirmed_fraud_lesson';
+      typeEl.innerHTML = '<span class="glesson-type ' + (isConfirmed ? 'confirmed' : 'correction') + '">' +
+        (isConfirmed ? '✓ Confirmed Pattern' : '⚠ Correction') + '</span>';
+      document.getElementById('glesson-body').textContent = lesson.summary;
+      document.getElementById('glesson').classList.add('visible');
+    }
+  }
+
+  function renderAccuracyGauge(stats) {
+    var gauge = document.getElementById('ggauge');
+    var bar = document.getElementById('ggauge-bar');
+    var detail = document.getElementById('ggauge-detail');
+
+    if (!stats || stats.rate === null || stats.total === 0) {
+      bar.className = 'ggauge-bar-fill none';
+      bar.style.width = '100%';
+      bar.textContent = 'No data';
+      detail.innerHTML = 'No human reviews yet for indicators: [' + (stats ? stats.indicators.join(', ') : '') + ']';
+    } else {
+      var pct = stats.rate;
+      var cls = pct >= 75 ? 'high' : (pct >= 50 ? 'medium' : 'low');
+      bar.className = 'ggauge-bar-fill ' + cls;
+      bar.style.width = pct + '%';
+      bar.textContent = pct + '%';
+      detail.innerHTML = '<strong>' + stats.agreed + ' of ' + stats.total + '</strong> human-reviewed cases agreed with agent' +
+        ' &middot; Indicators: [' + stats.indicators.join(', ') + ']';
+    }
+    gauge.classList.add('visible');
+  }
+
+  async function fetchAndShowAccuracy(txnId) {
+    try {
+      var res = await fetch('/api/accuracy-stats/' + encodeURIComponent(txnId));
+      if (res.ok) {
+        var stats = await res.json();
+        renderAccuracyGauge(stats);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function pollForLesson(txnId) {
+    var attempts = 0;
+    var maxAttempts = 30;
+    var pollInterval = setInterval(async function() {
+      attempts++;
+      try {
+        var res = await fetch('/api/lessons/' + encodeURIComponent(txnId));
+        if (res.ok) {
+          var data = await res.json();
+          if (data.found) {
+            clearInterval(pollInterval);
+            renderLessonComplete(data);
+            fetchAndShowAccuracy(txnId);
+            // Refresh case list + re-render
+            loadCases().then(function() {
+              var i = window._cases ? window._cases.findIndex(function(c) { return c.transaction_id === txnId; }) : -1;
+              if (i >= 0) {
+                var caseEl = document.getElementById('case-' + i);
+                if (caseEl) caseEl.classList.add('selected');
+                selectedCase = window._cases[i];
+              }
+            });
+          }
+        }
+      } catch (e) { /* ignore */ }
+      if (attempts >= maxAttempts) {
+        clearInterval(pollInterval);
+      }
+    }, 3000);
+  }
+
+  function animateLearningCycle(txnId) {
+    showLearningCycle();
+
+    // Animate nodes with timed transitions
+    activateLearningEdge('edge-human-ingest');
+    setLearningNodeState('ingest', 'running', 'RUNNING');
+
+    setTimeout(function() {
+      activateLearningEdge('edge-ingest-synth');
+      setLearningNodeState('ingest', 'done', 'DONE');
+      setLearningNodeState('synthesize', 'running', 'RUNNING');
+    }, 3000);
+
+    setTimeout(function() {
+      activateLearningEdge('edge-synth-write');
+      setLearningNodeState('synthesize', 'done', 'DONE');
+      setLearningNodeState('write_lesson', 'running', 'RUNNING');
+    }, 8000);
+
+    // Start polling for lesson completion
+    pollForLesson(txnId);
+  }
+
+  async function renderExistingLearningCycle(txnId) {
+    try {
+      var res = await fetch('/api/lessons/' + encodeURIComponent(txnId));
+      if (res.ok) {
+        var data = await res.json();
+        if (data.found) {
+          showLearningCycle();
+          renderLessonComplete(data);
+          fetchAndShowAccuracy(txnId);
+          return;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    // No lesson found — show gauge with current stats anyway
+    showLearningCycle();
+    fetchAndShowAccuracy(txnId);
   }
 
   loadCases();

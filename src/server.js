@@ -240,6 +240,60 @@ app.get('/api/fraud-transactions', async (_req, res) => {
   }
 });
 
+
+// Check if a lesson_learned document exists for a transaction (used by graph.html polling)
+app.get('/api/lessons/:transaction_id', async (req, res) => {
+  const { transaction_id } = req.params;
+  const client = new MongoClient(config.atlas.connectionString);
+  try {
+    await client.connect();
+    const lesson = await client
+      .db(config.atlas.database)
+      .collection('agent_memory')
+      .findOne(
+        { type: 'lesson_learned', transaction_id },
+        { projection: { _id: 0, summary: 1, lesson_type: 1, agreement: 1, outcome: 1, indicators: 1, created_at: 1 } }
+      );
+    if (!lesson) return res.status(404).json({ found: false });
+    res.json({ found: true, ...lesson });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await client.close();
+  }
+});
+
+// Get accuracy stats for a transaction's indicators (used by graph.html gauge)
+app.get('/api/accuracy-stats/:transaction_id', async (req, res) => {
+  const { transaction_id } = req.params;
+  const client = new MongoClient(config.atlas.connectionString);
+  try {
+    await client.connect();
+    const db = client.db(config.atlas.database);
+
+    const txn = await db.collection('fraud_transactions').findOne({ transaction_id });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+
+    const indicators = txn.fraud_indicators ?? [];
+    if (!indicators.length) return res.json({ rate: null, total: 0, agreed: 0, indicators });
+
+    const result = await db.collection('agent_memory').aggregate([
+      { $match: { type: 'lesson_learned', source: 'human_confirmed' } },
+      { $match: { indicators: { $all: indicators } } },
+      { $group: { _id: null, total: { $sum: 1 }, agreed: { $sum: { $cond: ['$agreement', 1, 0] } } } },
+    ]).toArray();
+
+    if (!result.length) return res.json({ rate: null, total: 0, agreed: 0, indicators });
+
+    const { total, agreed } = result[0];
+    res.json({ rate: Math.round((agreed / total) * 100), total, agreed, indicators });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await client.close();
+  }
+});
+
 // Run the investigation graph and stream progress events.
 // The investigation graph nodes emit events via a module-level callback
 // (setInvestigationEventCallback) that forwards to the SSE stream in real time.
