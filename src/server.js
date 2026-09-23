@@ -342,7 +342,7 @@ app.get('/api/precedent-brief/:transaction_id', async (req, res) => {
     if (verified.length === 0 && allMemory.length === 0 && indicators.length > 0) {
       [verified, allMemory] = await Promise.all([
         db.collection('agent_memory').aggregate([
-          { $match: { source: 'human_confirmed', transaction_id: { $ne: transaction_id } } },
+          { $match: { source: 'human_confirmed' } },
           { $match: { $or: [
             { indicators: { $all: indicators } },
             { tags: { $all: indicators } },
@@ -352,7 +352,7 @@ app.get('/api/precedent-brief/:transaction_id', async (req, res) => {
           { $project: { _id: 0, type: 1, transaction_id: 1, summary: 1, outcome: 1, lesson_type: 1, indicators: 1, created_at: 1, score: null } },
         ]).toArray(),
         db.collection('agent_memory').aggregate([
-          { $match: { source: 'agent', transaction_id: { $ne: transaction_id } } },
+          { $match: { source: 'agent' } },
           { $match: { $or: [
             { indicators: { $all: indicators } },
             { tags: { $all: indicators } },
