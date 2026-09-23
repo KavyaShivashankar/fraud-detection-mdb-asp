@@ -108,3 +108,73 @@ async function buildPrecedentBrief(transaction_id) {
     await client.close();
   }
 }
+
+async function computeAccuracyStat(db, indicators) {
+  if (!indicators || !indicators.length) return null;
+
+  try {
+    const result = await db.collection('agent_memory').aggregate([
+      { $match: { type: 'lesson_learned', source: 'human_confirmed' } },
+      { $match: { indicators: { $all: indicators } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          agreed: { $sum: { $cond: ['$agreement', 1, 0] } },
+        },
+      },
+    ]).toArray();
+
+    if (!result.length) return null;
+    const { total, agreed } = result[0];
+    return { total, agreed, rate: Math.round((agreed / total) * 100) };
+  } catch (e) {
+    return null;
+  }
+}
+
+function formatBrief({ transaction_id, indicators,
+  confirmedFraud, confirmedFalsePositive, unverified, accuracyStats }) {
+  const sections = [];
+  sections.push(`PRECEDENT BRIEF for ${transaction_id}`);
+  sections.push(`Indicators: [${(indicators || []).join(', ')}]`);
+  sections.push('');
+
+  if (confirmedFraud && confirmedFraud.length) {
+    sections.push('CONFIRMED FRAUD PRECEDENTS (human-verified):');
+    confirmedFraud.forEach((m, i) => {
+      sections.push(`${i + 1}. ${m.transaction_id} — ${m.summary}`);
+    });
+    sections.push('');
+  }
+
+  if (confirmedFalsePositive && confirmedFalsePositive.length) {
+    sections.push('CONFIRMED FALSE-POSITIVE PRECEDENTS (human-verified):');
+    confirmedFalsePositive.forEach((m, i) => {
+      sections.push(`${i + 1}. ${m.transaction_id} — ${m.summary}`);
+    });
+    sections.push('');
+  }
+
+  if (unverified && unverified.length) {
+    sections.push('UNVERIFIED AGENT PRECEDENTS (prior reasoning, not human-checked):');
+    unverified.forEach((m, i) => {
+      sections.push(`${i + 1}. ${m.transaction_id} — ${m.summary}`);
+    });
+    sections.push('');
+  }
+
+  if (accuracyStats) {
+    sections.push(`ACCURACY STAT: For cases with indicators [${(indicators || []).join(', ')}],`);
+    sections.push(`the agent has been right ${accuracyStats.rate}% of the time`);
+    sections.push(`(${accuracyStats.agreed} of ${accuracyStats.total} human-reviewed cases agreed with agent).`);
+  }
+
+  if (!confirmedFraud?.length && !confirmedFalsePositive?.length && !unverified?.length) {
+    sections.push('No precedents found. This is the first investigation for this indicator pattern.');
+  }
+
+  return sections.join('\n');
+}
+
+module.exports = { buildPrecedentBrief, computeAccuracyStat };
