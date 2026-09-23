@@ -261,20 +261,39 @@
     var accuracy = data.accuracy;
 
     // ── Section 1: Before/After comparison ──
-    html += '<div class="section-header"><span class="section-icon">\uD83E\uDDE0</span> Precedent Brief — Before & After Learning<span class="section-num">Step 1</span></div>';
+    html += '<div class="section-header"><span class="section-icon">\uD83E\uDDE0</span> Precedent Brief — At Investigation vs Now<span class="section-num">Step 1</span></div>';
     html += '<p style="font-size:12px;color:var(--grey-400);margin-bottom:14px">The Memory Retrieval Agent runs <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">$vectorSearch</code> on <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">agent_memory</code> to find past lessons. Here is what the Investigation Agent would see with and without learned lessons.</p>';
 
     html += '<div class="compare-grid">';
 
-    // BEFORE
+    // BEFORE — what the agent actually saw at investigation time
     html += '<div>';
-    html += '<div class="brief-card"><div class="brief-card-header before">\uD83D\uDD52 Before Learning (empty memory)</div>';
+    html += '<div class="brief-card"><div class="brief-card-header before">\uD83D\uDD52 At Investigation Time (what the agent saw)</div>';
     html += '<div class="brief-body">';
     html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
-    html += '<div class="brief-empty">No precedents found — this is what the first investigation for this pattern would see. The agent has no context from past cases.</div>';
+    if (data.storedPrecedentBrief) {
+      // Show the actual stored brief, formatted as sections
+      var briefLines = data.storedPrecedentBrief.split('\n');
+      briefLines.forEach(function(line) {
+        if (line.indexOf('CONFIRMED FRAUD') === 0) {
+          html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(line) + '</div>';
+        } else if (line.indexOf('CONFIRMED FALSE-POSITIVE') === 0) {
+          html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--green-dark);text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(line) + '</div>';
+        } else if (line.indexOf('UNVERIFIED') === 0) {
+          html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(line) + '</div>';
+        } else if (line.indexOf('ACCURACY STAT') === 0) {
+          html += '<div style="margin-top:10px;font-size:11px;color:var(--grey-700);font-weight:600">' + escapeHtml(line) + '</div>';
+        } else if (line.indexOf('No precedents') === 0) {
+          html += '<div class="brief-empty">' + escapeHtml(line) + '</div>';
+        } else if (line.trim() && line.indexOf('PRECEDENT BRIEF') !== 0 && line.indexOf('Indicators:') !== 0) {
+          html += '<div style="font-size:11px;color:var(--grey-600);line-height:1.5;margin:4px 0">' + escapeHtml(line) + '</div>';
+        }
+      });
+    } else {
+      html += '<div class="brief-empty">No stored precedent brief — this case was investigated before briefs were saved, or has not been investigated yet.</div>';
+    }
     html += '</div></div>';
     html += '</div>';
-
     // AFTER
     html += '<div>';
     html += '<div class="brief-card"><div class="brief-card-header after">\uD83D\uDCAF After Learning (current memory)</div>';

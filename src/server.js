@@ -230,6 +230,7 @@ app.get('/api/fraud-transactions', async (_req, res) => {
         'investigation.notes': 1,
         'investigation.human_outcome': 1,
         'investigation.human_reviewed_at': 1,
+        'investigation.precedent_brief': 1,
       })
       .toArray();
     res.json(cases);
@@ -389,6 +390,7 @@ app.get('/api/precedent-brief/:transaction_id', async (req, res) => {
       confirmedFalsePositive,
       unverified,
       accuracy,
+      storedPrecedentBrief: txn.investigation?.precedent_brief || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

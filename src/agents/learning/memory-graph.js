@@ -62,6 +62,24 @@ async function memoryRetrievalNode(state) {
   const { brief, indicators } = await buildPrecedentBrief(state.transaction_id);
   console.log(`[graph] memory_retrieval: done — ${indicators.length} indicators, brief length ${brief.length}`);
   emitEvent({ type: 'step_done', tool: 'memory_retrieval', result: { indicators, brief } });
+
+  // Persist the precedent brief so the learning-flow page can show
+  // what the agent actually saw at investigation time (the "before" view)
+  const mClient = new MongoClient(config.atlas.connectionString);
+  try {
+    await mClient.connect();
+    await mClient.db(config.atlas.database)
+      .collection('fraud_transactions')
+      .updateOne(
+        { transaction_id: state.transaction_id },
+        { $set: { 'investigation.precedent_brief': brief } }
+      );
+  } catch (e) {
+    console.error('[graph] memory_retrieval: failed to save precedent_brief:', e.message);
+  } finally {
+    await mClient.close();
+  }
+
   return { precedentBrief: brief, indicators };
 }
 
