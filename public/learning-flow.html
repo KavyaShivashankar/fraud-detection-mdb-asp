@@ -260,19 +260,20 @@
     var hasLessons = data.confirmedFraud.length > 0 || data.confirmedFalsePositive.length > 0;
     var accuracy = data.accuracy;
 
-    // ── Section 1: Before/After comparison ──
-    html += '<div class="section-header"><span class="section-icon">\uD83E\uDDE0</span> Precedent Brief — At Investigation vs Now<span class="section-num">Step 1</span></div>';
-    html += '<p style="font-size:12px;color:var(--grey-400);margin-bottom:14px">The Memory Retrieval Agent runs <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">$vectorSearch</code> on <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">agent_memory</code> to find past lessons. Here is what the Investigation Agent would see with and without learned lessons.</p>';
+    // ── Section 1: Precedent Brief ──
+    var isInvestigated = !!data.storedPrecedentBrief;
+    
+    if (isInvestigated) {
+      // Investigated case: show "At Investigation Time" vs "Current Memory"
+      html += '<div class="section-header"><span class="section-icon">\uD83E\uDDE0</span> Precedent Brief — At Investigation vs Now<span class="section-num">Step 1</span></div>';
+      html += '<p style="font-size:12px;color:var(--grey-400);margin-bottom:14px">The Memory Retrieval Agent runs <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">$vectorSearch</code> on <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">agent_memory</code> to find past lessons. Here is what the agent saw at investigation time vs what a re-investigation would see now.</p>';
+      html += '<div class="compare-grid">';
 
-    html += '<div class="compare-grid">';
-
-    // BEFORE — what the agent actually saw at investigation time
-    html += '<div>';
-    html += '<div class="brief-card"><div class="brief-card-header before">\uD83D\uDD52 At Investigation Time (what the agent saw)</div>';
-    html += '<div class="brief-body">';
-    html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
-    if (data.storedPrecedentBrief) {
-      // Show the actual stored brief, formatted as sections
+      // LEFT: At Investigation Time
+      html += '<div>';
+      html += '<div class="brief-card"><div class="brief-card-header before">\uD83D\uDD52 At Investigation Time (what the agent saw)</div>';
+      html += '<div class="brief-body">';
+      html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
       var briefLines = data.storedPrecedentBrief.split('\n');
       briefLines.forEach(function(line) {
         if (line.indexOf('CONFIRMED FRAUD') === 0) {
@@ -289,47 +290,61 @@
           html += '<div style="font-size:11px;color:var(--grey-600);line-height:1.5;margin:4px 0">' + escapeHtml(line) + '</div>';
         }
       });
-    } else {
-      html += '<div class="brief-empty">No stored precedent brief — this case was investigated before briefs were saved, or has not been investigated yet.</div>';
-    }
-    html += '</div></div>';
-    html += '</div>';
-    // AFTER
-    html += '<div>';
-    html += '<div class="brief-card"><div class="brief-card-header after">\uD83D\uDCAF After Learning (current memory)</div>';
-    html += '<div class="brief-body">';
-    html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
-    if (hasLessons) {
-      data.confirmedFraud.forEach(function(m) {
-        html += '<div class="precedent-item fraud">';
-        html += '<div class="p-label">\uD83D\uDD34 Confirmed Fraud Precedent</div>';
-        html += '<div class="p-summary">' + escapeHtml(m.summary) + '</div>';
-        html += '<div class="p-txn">' + m.transaction_id + '</div>';
-        html += '</div>';
-      });
-      data.confirmedFalsePositive.forEach(function(m) {
-        html += '<div class="precedent-item falsepositive">';
-        html += '<div class="p-label">\u2705 Confirmed False-Positive Precedent</div>';
-        html += '<div class="p-summary">' + escapeHtml(m.summary) + '</div>';
-        html += '<div class="p-txn">' + m.transaction_id + '</div>';
-        html += '</div>';
-      });
-    } else {
-      html += '<div class="brief-empty">No human-confirmed precedents found yet. Submit feedback on a case to start building memory for these indicators.</div>';
-    }
-    if (data.unverified.length > 0) {
-      html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.4px">Unverified Agent Precedents</div>';
-      data.unverified.forEach(function(m) {
-        html += '<div class="precedent-item unverified" style="margin-top:6px">';
-        html += '<div class="p-label">\u26A0 Unverified (source: agent)</div>';
-        html += '<div class="p-summary">' + escapeHtml(m.summary.slice(0, 120)) + '...</div>';
-        html += '</div>';
-      });
-    }
-    html += '</div></div>';
-    html += '</div>';
+      html += '</div></div>';
+      html += '</div>';
 
-    html += '</div>'; // close compare-grid
+      // RIGHT: Current Memory
+      html += '<div>';
+      html += '<div class="brief-card"><div class="brief-card-header after">\uD83D\uDCAF Current Memory (what re-investigation would see)</div>';
+      html += '<div class="brief-body">';
+      html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
+      if (hasLessons) {
+        data.confirmedFraud.forEach(function(m) {
+          html += '<div class="precedent-item fraud"><div class="p-label">\uD83D\uDD34 Confirmed Fraud Precedent</div><div class="p-summary">' + escapeHtml(m.summary) + '</div><div class="p-txn">' + m.transaction_id + '</div></div>';
+        });
+        data.confirmedFalsePositive.forEach(function(m) {
+          html += '<div class="precedent-item falsepositive"><div class="p-label">\u2705 Confirmed False-Positive Precedent</div><div class="p-summary">' + escapeHtml(m.summary) + '</div><div class="p-txn">' + m.transaction_id + '</div></div>';
+        });
+      } else {
+        html += '<div class="brief-empty">No human-confirmed precedents found in current memory for these indicators.</div>';
+      }
+      if (data.unverified.length > 0) {
+        html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.4px">Unverified Agent Precedents</div>';
+        data.unverified.forEach(function(m) {
+          html += '<div class="precedent-item unverified" style="margin-top:6px"><div class="p-label">\u26A0 Unverified (source: agent)</div><div class="p-summary">' + escapeHtml((m.summary || '').slice(0, 120)) + '...</div></div>';
+        });
+      }
+      html += '</div></div>';
+      html += '</div>';
+
+      html += '</div>'; // close compare-grid
+
+    } else {
+      // Uninvestigated case: show single "What the next investigation would see" card
+      html += '<div class="section-header"><span class="section-icon">\uD83E\uDDE0</span> Precedent Brief — What the Next Investigation Would See<span class="section-num">Step 1</span></div>';
+      html += '<p style="font-size:12px;color:var(--grey-400);margin-bottom:14px">This case has not been investigated yet. When it is, the Memory Retrieval Agent will run <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">$vectorSearch</code> on <code style="font-family:Fira Mono,monospace;font-size:11px;background:var(--grey-100);padding:1px 5px;border-radius:3px">agent_memory</code> to find past lessons. Here is what it would find right now.</p>';
+      
+      html += '<div class="brief-card"><div class="brief-card-header after">\uD83D\uDCAF Current Memory (what the investigation would see)</div>';
+      html += '<div class="brief-body">';
+      html += '<div style="font-size:11px;color:var(--grey-400);margin-bottom:8px">Indicators: [' + indicators.join(', ') + ']</div>';
+      if (hasLessons) {
+        data.confirmedFraud.forEach(function(m) {
+          html += '<div class="precedent-item fraud"><div class="p-label">\uD83D\uDD34 Confirmed Fraud Precedent</div><div class="p-summary">' + escapeHtml(m.summary) + '</div><div class="p-txn">' + m.transaction_id + '</div></div>';
+        });
+        data.confirmedFalsePositive.forEach(function(m) {
+          html += '<div class="precedent-item falsepositive"><div class="p-label">\u2705 Confirmed False-Positive Precedent</div><div class="p-summary">' + escapeHtml(m.summary) + '</div><div class="p-txn">' + m.transaction_id + '</div></div>';
+        });
+      } else {
+        html += '<div class="brief-empty">No precedents found in memory for these indicators. This would be the first investigation for this pattern — the agent would have no context from past cases.</div>';
+      }
+      if (data.unverified.length > 0) {
+        html += '<div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.4px">Unverified Agent Precedents</div>';
+        data.unverified.forEach(function(m) {
+          html += '<div class="precedent-item unverified" style="margin-top:6px"><div class="p-label">\u26A0 Unverified (source: agent)</div><div class="p-summary">' + escapeHtml((m.summary || '').slice(0, 120)) + '...</div></div>';
+        });
+      }
+      html += '</div></div>';
+    }
 
     // ── Section 2: Accuracy gauge ──
     html += '<div class="section-header"><span class="section-icon">\uD83D\uDCCA</span> Agent Accuracy for These Indicators<span class="section-num">Step 2</span></div>';
