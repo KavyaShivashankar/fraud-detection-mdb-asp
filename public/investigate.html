@@ -413,6 +413,21 @@
       transition: color .15s;
     }
     .analyst-badge button:hover { color: white; }
+
+    /* Nav dropdown */
+    .nav-dropdown { position: relative; }
+    .nav-dropdown-menu {
+      display: none; position: absolute; top: 100%; left: 0;
+      background: var(--white); border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+      min-width: 220px; z-index: 1000; padding: 4px 0;
+    }
+    .nav-dropdown-menu a {
+      display: block; color: var(--grey-700);
+      font-size: 13px; padding: 8px 16px; border-radius: 0;
+    }
+    .nav-dropdown-menu a:hover { background: var(--grey-50); color: var(--green-dark); }
+    .nav-dropdown:hover .nav-dropdown-menu { display: block; }
   </style>
 </head>
 <body>
@@ -422,10 +437,15 @@
   <h1>Fraud Detection &amp; Agent Demo <span style="color:rgba(255,255,255,.6);font-size:14px;font-weight:400">— Powered by MongoDB</span></h1>
   <nav>
     <a href="/simulate.html">Transaction Simulator</a>
-    <a href="/investigate.html" class="active">Fraud Investigator (Agent)</a>
+    <div class="nav-dropdown">
+      <a href="#" onclick="return false" class="active">Analyst Tools &#9662;</a>
+      <div class="nav-dropdown-menu">
+        <a href="/investigate.html" class="active">Fraud Investigator (Agent)</a>
+        <a href="/">Interactive Analyst (Chatbot)</a>
+      </div>
+    </div>
     <a href="/graph.html">Investigation Agent</a>
     <a href="/learning-flow.html">Learning Flow Detailed</a>
-    <a href="/">Interactive Analyst (Chatbot)</a>
     <div class="analyst-badge" id="analyst-badge">
       <span id="analyst-name"></span>
       <button onclick="logoutAnalyst()" title="Log out">⏻</button>
