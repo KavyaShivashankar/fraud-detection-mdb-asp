@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fraud Detection with Multi-Agent Learning Loop</title>
+<style>
+@page { margin: 0.7in 0.8in; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; font-size: 10.5pt; line-height: 1.55; }
+.cover { text-align: center; padding: 100px 0 50px; page-break-after: always; }
+.cover h1 { font-size: 24pt; color: #00684A; margin-bottom: 8px; }
+.cover .subtitle { font-size: 13pt; color: #4B5563; margin-bottom: 30px; }
+.cover .powered { font-size: 11pt; color: #9CA3AF; }
+.cover .date { font-size: 10pt; color: #9CA3AF; margin-top: 40px; }
+h2 { font-size: 15pt; color: #00684A; margin: 28px 0 10px; padding-bottom: 5px; border-bottom: 2px solid #E5E7EB; }
+h3 { font-size: 12pt; color: #374151; margin: 18px 0 6px; }
+p { margin: 6px 0; }
+ul, ol { padding-left: 20px; margin: 6px 0; }
+li { margin: 3px 0; }
+code { font-family: 'SF Mono', Menlo, monospace; font-size: 9pt; background: #F3F4F6; color: #00684A; padding: 1px 4px; border-radius: 3px; }
+pre { font-family: 'SF Mono', Menlo, monospace; font-size: 8pt; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px 12px; margin: 8px 0; overflow-x: auto; line-height: 1.5; white-space: pre-wrap; }
+pre code { background: none; color: #374151; padding: 0; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9pt; }
+th { background: #00684A; color: white; text-align: left; padding: 5px 8px; font-weight: 600; }
+td { border: 1px solid #E5E7EB; padding: 5px 8px; vertical-align: top; }
+tr:nth-child(even) td { background: #F9FAFB; }
+.card { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 14px; margin: 10px 0; }
+.card .card-title { font-weight: 700; color: #00684A; margin-bottom: 4px; }
+.pagebreak { page-break-before: always; }
+.small { font-size: 8.5pt; color: #6B7280; }
+.footer-note { font-size: 8pt; color: #9CA3AF; margin-top: 30px; border-top: 1px solid #E5E7EB; padding-top: 8px; }
+strong { font-weight: 600; }
+em { font-style: italic; color: #4B5563; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Fraud Detection with Multi-Agent Learning Loop</h1>
+  <div class="subtitle">A MongoDB Atlas Reference Architecture for<br>Real-Time AI-Powered Fraud Investigation</div>
+  <div class="powered">Powered by MongoDB Atlas</div>
+  <div class="date">September 2026</div>
+</div>
+
+<h2>Executive Summary</h2>
+<p>Financial institutions lose billions annually to fraud, yet most fraud detection systems suffer from two fundamental gaps: (1) they flag transactions but leave the investigation entirely to humans, and (2) they never learn from the outcomes of those investigations. This paper presents a reference architecture built entirely on MongoDB Atlas that closes both gaps &mdash; combining real-time stream processing, multi-agent AI investigation, and a closed-loop learning cycle that improves with every human review.</p>
+<p>The system demonstrates six MongoDB Atlas capabilities working as a single platform: Atlas Stream Processing for real-time scoring, Atlas Vector Search with autoEmbed for semantic case retrieval, Atlas Search for lexical keyword matching, Hybrid Search via <code>$rankFusion</code> for best-of-both retrieval, the document model for rich nested investigation records, and the aggregation framework as the execution engine for natural-language-to-MQL query generation.</p>
+<p>The result: a fraud operations system that investigates cases autonomously, routes decisions intelligently, learns from human feedback, and gets smarter over time &mdash; all on a single database platform with no additional infrastructure.</p>
+
+<h2 class="pagebreak">The Business Problem</h2>
+<table>
+<tr><th>Challenge</th><th>Current State</th><th>What's Needed</th></tr>
+<tr><td><strong>Volume</strong></td><td>Thousands of flagged transactions per day, limited analyst capacity</td><td>Automated investigation that pre-analyzes cases before humans see them</td></tr>
+<tr><td><strong>Consistency</strong></td><td>Each analyst investigates differently &mdash; no shared learning</td><td>A system that accumulates institutional knowledge from every review</td></tr>
+<tr><td><strong>Speed</strong></td><td>Manual investigation takes 15-45 minutes per case</td><td>Pre-investigated cases with precedent briefs delivered in seconds</td></tr>
+<tr><td><strong>Learning</strong></td><td>Lessons from past cases stay in analysts' heads</td><td>A memory system that retrieves relevant past conclusions for each new case</td></tr>
+<tr><td><strong>Trust</strong></td><td>AI decisions are black boxes &mdash; humans can't verify or correct</td><td>Human-in-the-loop feedback that creates ground-truth signal for future decisions</td></tr>
+</table>
+
+<h2>The Solution: Three Surfaces, One Platform</h2>
+<h3>1. Transaction Simulator</h3>
+<p>Injects test transactions with preset fraud scenarios (all indicators, unusual location only, high amount only, new device only, clean baseline). Each submission writes to the <code>transactions</code> collection and triggers the stream processing pipeline for real-time scoring.</p>
+<h3>2. Fraud Investigator (Agent)</h3>
+<p>Displays flagged cases and launches a multi-agent investigation graph that runs autonomously: retrieves precedents from past cases, investigates with tool-calling AI, makes a routing decision, and presents findings with a confidence level. A human analyst reviews the decision and provides feedback &mdash; triggering the learning cycle.</p>
+<h3>3. Interactive Analyst (Chatbot)</h3>
+<p>A conversational interface where analysts ask natural-language questions. The agent generates and executes MongoDB aggregation pipelines directly against the database &mdash; translating "show me fraud trends by country this week" into a live MQL pipeline. Supports hybrid search (vector + lexical via <code>$rankFusion</code>), vector-only, and lexical-only modes.</p>
+
+<h2 class="pagebreak">MongoDB Atlas Capabilities Demonstrated</h2>
+
+<h3>1. Atlas Stream Processing &mdash; Real-Time Fraud Scoring</h3>
+<p>A continuous aggregation pipeline monitors the <code>transactions</code> collection's change stream. Every inserted transaction is scored in real time &mdash; no application code in the hot path.</p>
+<ul>
+<li><code>$source</code> connects to <code>fraud_detection.transactions</code> on insert/update/replace</li>
+<li><code>$lookup</code> joins <code>user_profiles</code> to get behavioral baselines</li>
+<li>Three fraud signals evaluated using <code>$cond</code> + <code>$concatArrays</code>:
+  <ul>
+  <li><code>high_amount</code>: amount &gt; 3x user's average (25 points)</li>
+  <li><code>unusual_location</code>: country not in user's frequent locations (30 points)</li>
+  <li><code>new_device</code>: device ID not in user's known devices (20 points)</li>
+  </ul>
+</li>
+<li><code>$merge</code> writes results back to <code>transactions</code> with status, score, and indicators</li>
+<li>A second pipeline copies flagged transactions to <code>fraud_transactions</code></li>
+</ul>
+<div class="card"><div class="card-title">MongoDB Value</div>No separate streaming platform (Kafka, Flink, Spark Streaming). The same database that stores the data also processes the stream &mdash; one platform, one connection, one operational model.</div>
+
+<h3>2. Atlas Vector Search with autoEmbed &mdash; Semantic Case Retrieval</h3>
+<p>The Investigation Agent and Analyst Chatbot search for similar past fraud cases using natural language and get semantically matching results without any client-side embedding logic.</p>
+<ul>
+<li>An autoEmbed vector index on <code>fraud_transactions.text</code> uses the <code>voyage-4</code> model</li>
+<li>Atlas generates and stores embeddings at write time &mdash; the application never calls an embedding API</li>
+<li>At query time, <code>$vectorSearch</code> accepts plain text</li>
+<li>No Voyage API key in the application, no embedding pipeline, no vector storage management</li>
+</ul>
+<div class="card"><div class="card-title">MongoDB Value</div>Traditional vector search requires a separate vector database (Pinecone, Weaviate, Milvus), an embedding service, and sync logic. With autoEmbed, the operational database <em>is</em> the vector database &mdash; embeddings are generated and stored automatically, and vector search runs alongside regular queries on the same documents.</div>
+
+<h3 class="pagebreak">3. Atlas Search (BM25) &mdash; Lexical Keyword Search</h3>
+<p>Enables precise keyword matching over merchant names, locations, device types, and fraud indicators &mdash; "show me all cases involving Electronics Store in Lagos."</p>
+<ul>
+<li>A static-mapping Atlas Search index with BM25 scoring on key fields</li>
+<li><code>$search</code> operator with <code>text</code> query over multiple paths</li>
+<li>Returns relevance-scored results for exact term matching</li>
+</ul>
+<div class="card"><div class="card-title">MongoDB Value</div>Lexical search lives next to vector search on the same collection &mdash; no separate Elasticsearch cluster. The same query can combine <code>$search</code> (lexical) with <code>$vectorSearch</code> (semantic) in a single pipeline.</div>
+
+<h3>4. Hybrid Search via <code>$rankFusion</code> &mdash; Best-of-Both Retrieval</h3>
+<p>Combines semantic vector search and lexical BM25 search in a single query, fusing results via Reciprocal Rank Fusion (RRF) with configurable weights (60% vector, 40% lexical).</p>
+<pre><code>{
+  $rankFusion: {
+    input: {
+      pipelines: {
+        vectorPipeline: [{ $vectorSearch: { ... } }],
+        lexicalPipeline: [{ $search: { ... } }, { $limit: 20 }],
+      },
+    },
+    combination: { weights: { vectorPipeline: 0.6, lexicalPipeline: 0.4 } },
+  },
+}</code></pre>
+<div class="card"><div class="card-title">MongoDB Value</div>No other database natively combines vector and lexical search with rank fusion in a single query. Competing solutions require application-level merging of results from two separate systems. With <code>$rankFusion</code>, Atlas handles the fusion server-side &mdash; one query, one result set, one round trip.</div>
+
+<h3 class="pagebreak">5. Document Model &mdash; Rich Investigation Records</h3>
+<p>Each fraud transaction is a single rich document containing the transaction details, fraud score, indicators, device metadata, merchant info, and a nested <code>investigation</code> subdocument that grows as the agent investigates and the human reviews.</p>
+<pre><code>{
+  "transaction_id": "txn_demo_1234",
+  "amount": 4800,
+  "fraud_score": 75,
+  "fraud_indicators": ["high_amount", "unusual_location", "new_device"],
+  "merchant": { "merchant_name": "Unknown Electronics", "merchant_country": "NG" },
+  "location": { "country": "NG", "city": "Lagos" },
+  "device": { "device_id": "dev_unknown_001", "device_type": "mobile" },
+  "investigation": {
+    "confidence": "high",
+    "recommendation": "escalate",
+    "routed_to_human": true,
+    "decision_rationale": "Pattern matches confirmed account takeover...",
+    "notes": ["Device not in known devices", "Amount exceeds account limit"],
+    "human_outcome": "confirmed_fraud",
+    "human_reviewed_at": "2026-09-22T21:37:19Z",
+    "precedent_brief": "PRECEDENT BRIEF for txn_demo_1234..."
+  }
+}</code></pre>
+<div class="card"><div class="card-title">MongoDB Value</div>No joins. No object-relational mapping. The entire investigation &mdash; from scoring to agent findings to human feedback &mdash; is one document that evolves over time. A relational schema would require 5-7 tables with foreign keys to represent the same data.</div>
+
+<h3>6. Aggregation Framework as AI Execution Engine</h3>
+<p>The Analyst Chatbot's <code>run_aggregation</code> tool lets the AI model generate MongoDB aggregation pipelines from natural language and execute them directly against the database.</p>
+<ul>
+<li>Analyst asks: "What's the average fraud score by country this month?"</li>
+<li>Model generates: <code>[{ $match: { timestamp: { $gte: ... } } }, { $group: { _id: "$location.country", avgScore: { $avg: "$fraud_score" } } }]</code></li>
+<li>Atlas executes it and returns the result set to the model</li>
+<li>Model summarizes the findings in plain English</li>
+</ul>
+<p class="small">Safety: blocks <code>$out</code>, <code>$merge</code>, <code>$indexStats</code>. Results capped at 50. Only allowed collections are queryable.</p>
+<div class="card"><div class="card-title">MongoDB Value</div>The aggregation framework is the most expressive query language in the database industry. By exposing it to an AI agent, the system turns natural language into live analytics &mdash; without pre-built dashboards, without BI tools, without a separate analytics database.</div>
+
+<h2 class="pagebreak">The Multi-Agent Investigation Graph</h2>
+<p>The investigation is orchestrated as a LangGraph state graph with three sequential nodes. Unlike prompt-enforced protocols (where the AI might skip steps), the graph topology guarantees execution order.</p>
+
+<h3>Node 1: Memory Retrieval (deterministic, no LLM)</h3>
+<ol>
+<li>Fetches the flagged transaction from <code>fraud_transactions</code></li>
+<li>Constructs a pattern description from indicators, amount, location, device, merchant</li>
+<li>Runs <strong>two parallel <code>$vectorSearch</code> calls</strong> on <code>agent_memory</code>:
+  <ul>
+  <li><strong>Verified search</strong>: filtered to <code>source: "human_confirmed"</code></li>
+  <li><strong>Unverified search</strong>: all memories</li>
+  </ul>
+</li>
+<li>Computes an <strong>accuracy stat</strong>: aggregates <code>lesson_learned</code> docs with matching indicators</li>
+<li>Assembles a structured <strong>precedent brief</strong></li>
+</ol>
+
+<h3>Node 2: Investigation Agent (LLM &mdash; Claude Sonnet)</h3>
+<p>Receives the precedent brief as input and investigates with four tools:</p>
+<table>
+<tr><th>Tool</th><th>MongoDB operation</th></tr>
+<tr><td><code>fetch_fraud_transaction</code></td><td><code>findOne</code> on <code>fraud_transactions</code></td></tr>
+<tr><td><code>fetch_user_history</code></td><td><code>findOne</code> + <code>find</code> on <code>user_profiles</code> and <code>transactions</code></td></tr>
+<tr><td><code>search_similar_fraud_cases</code></td><td><code>$vectorSearch</code> on <code>fraud_transactions</code></td></tr>
+<tr><td><code>submit_investigation_findings</code></td><td>Returns to graph state</td></tr>
+</table>
+
+<h3>Node 3: Decision Agent (LLM &mdash; Claude Sonnet)</h3>
+<p>Applies a decision policy using the accuracy stat:</p>
+<table>
+<tr><th>Condition</th><th>Decision</th></tr>
+<tr><td>Accuracy &lt; 60%</td><td>Force human escalation</td></tr>
+<tr><td>Accuracy &gt;= 75% + confidence "high" + auto_close</td><td>Auto-close</td></tr>
+<tr><td>Confidence "medium" or "low"</td><td>Always escalate</td></tr>
+<tr><td>No accuracy stat (first case)</td><td>Follow recommendation, lean toward escalation</td></tr>
+</table>
+
+<h2 class="pagebreak">The Learning Loop</h2>
+<p>When a human analyst reviews the agent's decision and clicks "Confirm fraud" or "False positive," a learning graph runs asynchronously:</p>
+<ol>
+<li><strong>Ingest</strong> (no LLM): Reads the case, compares agent vs human conclusion, produces <code>agreement</code> boolean</li>
+<li><strong>Synthesize</strong> (LLM): Claude generates a 2-4 sentence reusable lesson. Agreement &rarr; "confirmed pattern." Disagreement &rarr; "correction."</li>
+<li><strong>Write Lesson</strong> (no LLM): Inserts <code>lesson_learned</code> to <code>agent_memory</code> with <code>source: "human_confirmed"</code>. autoEmbed indexes it automatically.</li>
+</ol>
+<p>The next investigation with similar indicators retrieves this lesson via <code>$vectorSearch</code>, includes it in the precedent brief, and the investigation agent reads it before deciding. The accuracy stat compounds with each review.</p>
+
+<div class="card"><div class="card-title">The Trust Gradient</div>
+<p>The <code>source</code> field creates a trust gradient: <code>"agent"</code> = unverified prior reasoning (precedent, not fact). <code>"human_confirmed"</code> = ground truth. The Memory Retrieval Agent runs two parallel searches &mdash; one filtered to human-confirmed only &mdash; and the system prompt coaches the agent to prefer human-confirmed results.</p>
+</div>
+
+<h3>How Accuracy Compounds</h3>
+<table>
+<tr><th>After N feedbacks</th><th>Accuracy</th><th>Decision Agent behavior</th></tr>
+<tr><td>1 feedback, 0 agreed</td><td>0%</td><td>Force escalation (&lt; 60%)</td></tr>
+<tr><td>2 feedbacks, 1 agreed</td><td>50%</td><td>Force escalation (&lt; 60%)</td></tr>
+<tr><td>3 feedbacks, 2 agreed</td><td>67%</td><td>Follow recommendation (60-75%)</td></tr>
+<tr><td>5 feedbacks, 4 agreed</td><td>80%</td><td>Allow auto-close (&gt;= 75%)</td></tr>
+<tr><td>10 feedbacks, 9 agreed</td><td>90%</td><td>Allow auto-close (&gt;= 75%)</td></tr>
+</table>
+<p class="small">The system adjusts its own autonomy threshold based on past performance. Patterns where the agent is frequently wrong get forced to human review. Patterns where it's consistently right can be auto-closed.</p>
+
+<h2 class="pagebreak">MongoDB Value Framework</h2>
+
+<h3>Speed to Value</h3>
+<table>
+<tr><th>Traditional approach</th><th>This project</th></tr>
+<tr><td>Separate streaming platform (Kafka + Flink)</td><td>Atlas Stream Processing &mdash; same database</td></tr>
+<tr><td>Separate vector database (Pinecone/Weaviate)</td><td>autoEmbed &mdash; Atlas generates embeddings automatically</td></tr>
+<tr><td>Separate search engine (Elasticsearch)</td><td>Atlas Search &mdash; BM25 on the same collection</td></tr>
+<tr><td>Application-level result merging for hybrid search</td><td><code>$rankFusion</code> &mdash; server-side fusion in one query</td></tr>
+<tr><td>ETL pipeline to sync data to analytics warehouse</td><td>Aggregation framework &mdash; analytics on live data</td></tr>
+<tr><td>5-7 infrastructure components</td><td><strong>1 platform: MongoDB Atlas</strong></td></tr>
+</table>
+
+<h3>Simplification</h3>
+<table>
+<tr><th>Without MongoDB</th><th>With MongoDB Atlas</th></tr>
+<tr><td>Operational DB + vector DB + search engine + streaming + embedding service</td><td>One Atlas cluster</td></tr>
+<tr><td>5+ vendor relationships, billing models, support contracts</td><td>One vendor, one bill, one support team</td></tr>
+<tr><td>Data sync pipelines between systems</td><td>No sync &mdash; all capabilities on the same data</td></tr>
+<tr><td>Embedding service + API key management + pipeline</td><td>autoEmbed &mdash; server-side, zero config</td></tr>
+</table>
+
+<h3>Trust and Security</h3>
+<ul>
+<li><strong>Human-in-the-loop</strong>: Every AI decision can be reviewed, confirmed, or corrected</li>
+<li><strong>Trust gradient</strong>: Memory distinguishes agent conclusions from human-verified outcomes</li>
+<li><strong>Sandboxed AI queries</strong>: <code>run_aggregation</code> blocks write operations, caps results</li>
+<li><strong>Audit trail</strong>: Every investigation, feedback, and lesson persisted with timestamps</li>
+<li><strong>Encryption</strong>: Data encrypted at rest and in transit (Atlas built-in)</li>
+</ul>
+
+<h3>Cost Efficiency</h3>
+<table>
+<tr><th>Cost category</th><th>Traditional</th><th>This project</th></tr>
+<tr><td>Infrastructure</td><td>5+ separate services</td><td>1 Atlas cluster</td></tr>
+<tr><td>Embedding API calls</td><td>Per-insert + per-query</td><td>Zero (autoEmbed is server-side)</td></tr>
+<tr><td>Streaming platform</td><td>Kafka cluster + Flink compute</td><td>Included in Atlas</td></tr>
+<tr><td>Search engine</td><td>Elasticsearch cluster</td><td>Included in Atlas</td></tr>
+<tr><td>Vector database</td><td>Pinecone/Weaviate subscription</td><td>Included in Atlas</td></tr>
+</table>
+
+<h2 class="pagebreak">Key Takeaways</h2>
+<ol>
+<li><strong>One platform, six capabilities</strong>: Stream Processing, Vector Search (autoEmbed), Atlas Search (BM25), Hybrid Search (<code>$rankFusion</code>), document model, aggregation framework &mdash; all on one cluster.</li>
+<li><strong>The database is the AI infrastructure</strong>: Vector embeddings, semantic search, lexical search, and real-time scoring all happen inside MongoDB. No external AI infrastructure beyond the LLM API.</li>
+<li><strong>The system learns from humans</strong>: Every human review produces a searchable lesson that improves future investigations. The accuracy stat controls how much autonomy the agent gets &mdash; it knows its own limits.</li>
+<li><strong>Natural language to MQL</strong>: Analysts ask questions in English. The AI generates MongoDB aggregation pipelines. Atlas executes them. No BI tool required.</li>
+<li><strong>Simplification at every layer</strong>: One vendor, one connection string, one query language, one deployment model &mdash; replacing 5+ infrastructure components with a single Atlas cluster.</li>
+</ol>
+
+<h2>Technical Stack</h2>
+<table>
+<tr><th>Component</th><th>Technology</th></tr>
+<tr><td>Database + Search + Streaming</td><td>MongoDB Atlas</td></tr>
+<tr><td>Vector embeddings</td><td>autoEmbed with voyage-4 (server-side)</td></tr>
+<tr><td>AI model</td><td>Claude Sonnet 4 (Anthropic)</td></tr>
+<tr><td>Agent orchestration</td><td>LangGraph (StateGraph)</td></tr>
+<tr><td>Agent tools</td><td>LangChain tool() with Zod schemas</td></tr>
+<tr><td>Web server</td><td>Express.js</td></tr>
+<tr><td>Frontend</td><td>Vanilla HTML/CSS/JS with Server-Sent Events</td></tr>
+<tr><td>Driver</td><td>mongodb Node.js driver v6</td></tr>
+</table>
+
+<div class="footer-note">
+This paper describes a reference architecture for demonstration purposes. Production deployments should add rate limiting, authentication hardening, connection pooling, and monitoring.<br><br>
+Powered by MongoDB Atlas.
+</div>
+
+</body>
+</html>
